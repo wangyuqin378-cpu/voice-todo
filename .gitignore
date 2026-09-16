@@ -1,0 +1,21 @@
+.build/
+dist/
+.DS_Store
+.swiftpm/
+.local-signing/
+
+# Personal runtime state, credentials, local audit evidence and historical handoffs.
+qa/*
+!qa/cases.json
+HANDOFF.md
+.continuity/
+.env
+.env.*
+*.keychain-db
+*.p12
+*.pfx
+*.pem
+*.store
+*.store-shm
+*.store-wal
+*.log

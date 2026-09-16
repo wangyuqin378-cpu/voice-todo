@@ -1,0 +1,614 @@
+[
+  {
+    "id": "01",
+    "text": "明天下午三点提醒我交材料",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "交材料",
+          "提交材料"
+        ],
+        "completed": false,
+        "needsReminder": false,
+        "reminderISO": "2026-09-16T14:50:00+08:00",
+        "plannedISO": "2026-09-16T15:00:00+08:00",
+        "plannedHasTime": true
+      }
+    ]
+  },
+  {
+    "id": "02",
+    "text": "半小时后提醒我取快递",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "取快递",
+          "领取快递"
+        ],
+        "completed": false,
+        "needsReminder": false,
+        "reminderISO": "2026-09-15T10:30:00+08:00"
+      }
+    ]
+  },
+  {
+    "id": "03",
+    "text": "记得报销",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "报销",
+          "提交报销"
+        ],
+        "completed": false,
+        "needsReminder": false
+      }
+    ]
+  },
+  {
+    "id": "04",
+    "text": "记一下买牙膏，不用提醒",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "买牙膏",
+          "购买牙膏"
+        ],
+        "completed": false,
+        "needsReminder": false
+      }
+    ]
+  },
+  {
+    "id": "05",
+    "text": "材料已经交了",
+    "pending": [
+      "交材料"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p0"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "06",
+    "text": "牛奶买好了",
+    "pending": [
+      "买牛奶"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p0"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "07",
+    "text": "给妈妈的电话打完了",
+    "pending": [
+      "给妈妈打电话"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p0"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "08",
+    "text": "报销提交好了",
+    "pending": [
+      "提交出差报销"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": true,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "09",
+    "text": "材料已经交了",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "交材料",
+          "提交材料"
+        ],
+        "completed": true,
+        "needsReminder": false
+      }
+    ]
+  },
+  {
+    "id": "10",
+    "text": "刚刚把家里收拾好了",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "收拾家里",
+          "收拾房间",
+          "打扫家里",
+          "打扫房间"
+        ],
+        "completed": true,
+        "needsReminder": false
+      }
+    ]
+  },
+  {
+    "id": "11",
+    "text": "材料交完了",
+    "pending": [],
+    "done": [
+      "交材料"
+    ],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "12",
+    "text": "快递取好了",
+    "pending": [],
+    "done": [
+      "取快递"
+    ],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "13",
+    "text": "材料交好了",
+    "pending": [
+      "交签证材料",
+      "交入职材料"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": true,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "14",
+    "text": "入职材料交好了",
+    "pending": [
+      "交签证材料",
+      "交入职材料"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p1"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "15",
+    "text": "报销好了，明天下午三点提醒我买牛奶",
+    "pending": [
+      "报销"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p0"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "买牛奶",
+          "购买牛奶"
+        ],
+        "completed": false,
+        "needsReminder": false,
+        "reminderISO": "2026-09-16T14:50:00+08:00",
+        "plannedISO": "2026-09-16T15:00:00+08:00",
+        "plannedHasTime": true
+      }
+    ]
+  },
+  {
+    "id": "16",
+    "text": "十分钟后提醒我关烤箱，半小时后提醒我出门",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "关烤箱",
+          "关闭烤箱"
+        ],
+        "completed": false,
+        "needsReminder": false,
+        "reminderISO": "2026-09-15T10:10:00+08:00"
+      },
+      {
+        "titles": [
+          "出门"
+        ],
+        "completed": false,
+        "needsReminder": false,
+        "reminderISO": "2026-09-15T10:30:00+08:00"
+      }
+    ]
+  },
+  {
+    "id": "17",
+    "text": "牛奶买了，快递也取了",
+    "pending": [
+      "买牛奶",
+      "取快递"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p0",
+      "p1"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "18",
+    "text": "材料还没交",
+    "pending": [
+      "交材料"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "19",
+    "text": "报销差一点做完",
+    "pending": [
+      "报销"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "20",
+    "text": "材料没有交",
+    "pending": [
+      "交材料"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "21",
+    "text": "材料交了吗",
+    "pending": [
+      "交材料"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "22",
+    "text": "我准备去取快递",
+    "pending": [
+      "取快递"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "23",
+    "text": "先别把买牛奶勾掉，我还没买",
+    "pending": [
+      "买牛奶"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "24",
+    "text": "材料交好了，不对，说错了，还没交",
+    "pending": [
+      "交材料"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "25",
+    "text": "材料还没交，不对，刚刚已经交好了",
+    "pending": [
+      "交材料"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p0"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "26",
+    "text": "牛奶买好了，但是报销还没弄完",
+    "pending": [
+      "买牛奶",
+      "报销"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p0"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "27",
+    "text": "明天下午提醒我买菜",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": true,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "买菜",
+          "购买蔬菜"
+        ],
+        "completed": false,
+        "needsReminder": true,
+        "plannedISO": "2026-09-16T00:00:00+08:00",
+        "plannedHasTime": false
+      }
+    ]
+  },
+  {
+    "id": "28",
+    "text": "每天八点提醒我喝水",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": true,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "29",
+    "text": "买牙膏、洗衣服都记下来，不用提醒",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "买牙膏",
+          "购买牙膏"
+        ],
+        "completed": false,
+        "needsReminder": false
+      },
+      {
+        "titles": [
+          "洗衣服",
+          "洗衣"
+        ],
+        "completed": false,
+        "needsReminder": false
+      }
+    ]
+  },
+  {
+    "id": "30",
+    "text": "帮我记一下，明天上午九点给客户回电话；快递刚取到了",
+    "pending": [],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": [
+      {
+        "titles": [
+          "给客户回电话",
+          "回客户电话",
+          "回复客户电话"
+        ],
+        "completed": false,
+        "needsReminder": false,
+        "plannedISO": "2026-09-16T09:00:00+08:00",
+        "plannedHasTime": true
+      },
+      {
+        "titles": [
+          "取快递",
+          "领取快递"
+        ],
+        "completed": true,
+        "needsReminder": false
+      }
+    ]
+  },
+  {
+    "id": "31",
+    "text": "文件已经发给小王了",
+    "pending": [
+      "给小王发送文件",
+      "给小李发送文件"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p0"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "32",
+    "text": "材料如果交好了就不用再提醒",
+    "pending": [
+      "交材料"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "33",
+    "text": "明天完成材料",
+    "pending": [
+      "交材料"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "34",
+    "text": "材料交了？",
+    "pending": [
+      "交材料"
+    ],
+    "done": [],
+    "completedIDs": [],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "35",
+    "text": "项目计划已经写好了",
+    "pending": [
+      "写项目计划"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p0"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  },
+  {
+    "id": "36",
+    "text": "面试准备做完了",
+    "pending": [
+      "面试准备"
+    ],
+    "done": [],
+    "completedIDs": [
+      "p0"
+    ],
+    "question": false,
+    "nowISO": "2026-09-15T10:00:00+08:00",
+    "timeZoneID": "Asia/Shanghai",
+    "newTasks": []
+  }
+]
