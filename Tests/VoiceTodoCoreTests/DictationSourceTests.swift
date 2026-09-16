@@ -10,7 +10,7 @@ final class DictationSourceTests: XCTestCase {
         XCTAssertEqual(source.route(editor), .original)
         XCTAssertEqual(source.route(provider), .inputMethod)
         capture.observeClipboard(changeCount: 10, at: 1) { XCTFail("Must not read old clipboard"); return nil }
-        capture.observeClipboard(changeCount: 11, at: 2) { "帮我安排，我明天有个面试就好了" }
+        capture.observeClipboard(changeCount: 11, at: 2) { "帮我记录一下，我明天有个面试就好了" }
         capture.end(at: 3)
         XCTAssertEqual(source.route(editor), .original)
         guard case .command(let text, .clipboard) = capture.result(at: 5) else { return XCTFail("Provider-to-editor handoff lost its capture") }

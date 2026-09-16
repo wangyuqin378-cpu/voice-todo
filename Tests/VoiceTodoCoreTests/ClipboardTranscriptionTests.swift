@@ -54,7 +54,7 @@ final class ClipboardTranscriptionTests: XCTestCase {
         }
         try turn("清单提醒我买牛奶")
         let q = try XCTUnwrap(workspace.questions.first)
-        try turn("不用提醒。", questionID: q.id)
+        try turn("清单，不用提醒。", questionID: q.id)
         XCTAssertEqual(workspace.tasks.count, 1)
         XCTAssertFalse(workspace.tasks[0].needsReminder)
         XCTAssertTrue(workspace.questions.isEmpty)

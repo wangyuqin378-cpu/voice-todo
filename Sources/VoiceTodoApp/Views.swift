@@ -79,13 +79,17 @@ struct MainView: View {
             Image(systemName: completed ? "checkmark.circle" : "waveform").font(.system(size: 32, weight: .light)).foregroundStyle(accent)
             Text(search.isEmpty ? (completed ? "做完的事，会留在这里。" : "把惦记的事，说出来。") : "没有找到这件事").font(.system(size: 15, weight: .medium))
             if search.isEmpty && !completed {
-                Text(state.settings.useInputMethod ? "照常用 Fn 说“帮我安排，明天有个面试”。\n做完说“面试完成了”，不去了说“取消面试”。" : "轻按\(state.settings.hotkey.label)开始，再按结束。\n也可以按住说话，松开结束。")
+                Text(state.settings.useInputMethod ? "用 Fn 说“提醒我明天下午三点面试”，或“帮我记录一下，明天交材料”。\n做完说“清单，面试完成了”；口令必须在开头。" : "轻按\(state.settings.hotkey.label)开始，再按结束。\n也可以按住说话，松开结束。")
                     .multilineTextAlignment(.center).font(.system(size: 13)).foregroundStyle(.secondary)
             }
         }.frame(maxWidth: .infinity).padding(.vertical, 40)
     }
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if state.settings.useInputMethod {
+                Text("Fn 语音：开头说“提醒我…”或“帮我记录一下…”。完成、取消和回答说“清单，…”。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
             if let id = state.editingCaptureID, let capture = state.pending.first(where: { $0.id == id }) {
                 HStack {
                     Text(state.recoveryIssue(capture) == nil ? "正在修改未处理记录" : "请改写为完整指令，原问题已变化").font(.system(size: 12)).foregroundStyle(.secondary)
@@ -95,7 +99,7 @@ struct MainView: View {
             }
             ZStack(alignment: .topLeading) {
                 if state.draft.isEmpty {
-                    Text(state.question == nil ? "例如：材料交好了，明天下午三点提醒我买牛奶" : "回答上面的问题，或说一件新事情…")
+                    Text(state.question == nil ? "手动输入例：材料交好了，明天下午三点提醒我买牛奶" : "回答上面的问题，或说一件新事情…")
                         .foregroundStyle(.secondary).padding(.top, 5).padding(.leading, 5).allowsHitTesting(false)
                 }
                 TextEditor(text: $state.draft).font(.system(size: 13)).scrollContentBackground(.hidden).frame(height: 56).accessibilityLabel("输入待办或完成情况")
@@ -132,7 +136,7 @@ struct QuestionView: View {
             }
             HStack {
                 Text(state.settings.useInputMethod
-                     ? (state.awaitingFnReply ? "用 Fn 回答；两分钟内无需再说“清单”" : "用 Fn 说“清单”加上你的回答")
+                     ? "用 Fn 说“清单”加上你的回答，例如“清单，明天下午三点”"
                      : "按住同一个键回答").font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer()
                 if question.kind == .reminder { Button("不用提醒") { state.submit("不用提醒", answerID: question.id) }.font(.system(size: 11)) }
@@ -245,7 +249,7 @@ struct SettingsView: View {
                             Text("上午 10:00").tag(10)
                             Text("问我具体时间").tag(-1)
                         }
-                        Text("例如“明天提醒我报销”，会按这里的时间提醒，并显示具体时间。").font(.system(size: 12)).foregroundStyle(.secondary)
+                        Text("例如“提醒我明天报销”，会按这里的时间提醒，并显示具体时间。").font(.system(size: 12)).foregroundStyle(.secondary)
                     }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 permissions
@@ -270,6 +274,10 @@ struct SettingsView: View {
                 Text(settings.useInputMethod ? "轻按 Fn 开始，再按一次结束；按住说话也可以，松开结束。Esc 取消。" : "轻按\(settings.hotkey.label)开始，再按一次结束；也可以按住说话，松开结束。Esc 取消。")
                     .font(.system(size: 13))
                 Text("普通转写不弹窗、不保存。识别到事项操作后显示结果；未成功的文字可在清单中处理。").font(.system(size: 13)).foregroundStyle(.secondary)
+                if settings.useInputMethod {
+                    Text("固定开头口令：新增说“提醒我…”或“帮我记录一下…”；完成、取消、撤销和回答追问说“清单，…”。出现在句中或句尾不触发，未命中不保存、不发给 AI。")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                }
                 Text("同名事项也会新增。已有事项的时间和提醒请在清单中手动编辑；语音完成需名称完整对应且唯一匹配。").font(.system(size: 13)).foregroundStyle(.secondary)
                 Label(state.captureStatus.title, systemImage: state.captureStatus.symbol).font(.system(size: 13))
                 Toggle("需要追问时读出问题", isOn: $settings.speakQuestions)

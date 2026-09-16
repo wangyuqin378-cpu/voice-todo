@@ -93,12 +93,12 @@ final class ExternalDictationTests: XCTestCase {
     func testSameFnAnswerCanUseEitherChannelWithQuestionContext() {
         var c = capture(questionID: "q")
         c.end(at: 1)
-        c.observeClipboard(changeCount: 11, at: 2) { "是的。" }
-        XCTAssertEqual(c.result(at: 4), .command("是的。", .clipboard))
+        c.observeClipboard(changeCount: 11, at: 2) { "清单，是的。" }
+        XCTAssertEqual(c.result(at: 4), .command("清单，是的。", .clipboard))
         XCTAssertEqual(c.questionID, "q")
         var field = capture(questionID: "q")
         field.end(at: 1)
-        field.observeField("草稿不用。", at: 2)
-        XCTAssertEqual(field.result(at: 4), .command("不用。", .field))
+        field.observeField("草稿清单，不用。", at: 2)
+        XCTAssertEqual(field.result(at: 4), .command("清单，不用。", .field))
     }
 }

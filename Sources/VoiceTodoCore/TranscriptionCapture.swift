@@ -57,7 +57,7 @@ public struct TranscriptionCapture: Sendable {
               let changedAt, now - changedAt >= 1.2, let latest,
               let inserted = insertion(in: latest), !inserted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .waiting }
         // Classification of an intermediate ordinary snapshot is not delivery.
-        guard CommandText.accepts(inserted) || questionID != nil else { return .ignored }
+        guard AutomaticCapturePolicy.accepts(inserted) else { return .ignored }
         delivered = true
         return .command(inserted.trimmingCharacters(in: .whitespacesAndNewlines))
     }

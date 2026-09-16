@@ -108,7 +108,8 @@ enum CancellationRequest {
         let clauses = input.components(separatedBy: CharacterSet(charactersIn: "，,。；;！!\n"))
         // Also allow punctuation between the app's address and the command.
         let source = CommandText.body(input) ?? input
-        if TaskReducer.normalized(source) == TaskReducer.normalized(evidence),
+        let evidenceBody = CommandText.body(evidence) ?? evidence
+        if TaskReducer.normalized(source) == TaskReducer.normalized(evidenceBody),
            let target = parse(source, now: now, timeZone: timeZone) { return target }
         for clause in clauses where TaskReducer.normalized(clause) == TaskReducer.normalized(evidence) {
             if let target = parse(clause, now: now, timeZone: timeZone) { return target }

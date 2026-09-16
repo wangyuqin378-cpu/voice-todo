@@ -20,7 +20,7 @@ import VoiceTodoCore
     var hotkeyAllowed = GlobalHotkey.allowed
     var hotkeyConnected = false
     var inputMethodAllowed = InputMethodBridge.allowed
-    var inputMethodStatus = "Fn 后台接收 · 识别到待办后才显示"
+    var inputMethodStatus = "Fn 后台接收 · 只处理开头口令"
     var receivingInputMethod = false
     var inputMethodFinishing = false
     var fnStarting = false
@@ -158,17 +158,19 @@ import VoiceTodoCore
         fnSpeech.onStatus = { [weak self] text in
             self?.inputMethodStatus = text
             if text.contains("未听到文字") { self?.lastVoiceOutcome = "本次未听到文字 · 可再说一次" }
-            else if text.contains("普通转写") { self?.lastVoiceOutcome = "本次未识别到事项操作 · 清单未变化" }
+            else if text.contains("普通转写") { self?.lastVoiceOutcome = "开头没有清单口令 · 未保存" }
         }
         fnSpeech.onCommand = { [weak self] text, id, questionID in self?.enqueueExternal(text, id: id, answerID: questionID) }
         fnSpeech.onFailure = { [weak self] text, id, message, questionID in
             guard let self else { return }
+            self.lastVoiceOutcome = message
+            // Background dictation without an explicit opening stays quiet,
+            // including partial speech interrupted before recognition finishes.
+            guard AutomaticCapturePolicy.accepts(text) else { return }
             do {
-                if !text.isEmpty {
-                    let capture = try self.repository.capture(text, questionID: questionID, id: "external-" + id)
-                    try self.repository.fail(capture, message: message)
-                    try self.reloadPending()
-                }
+                let capture = try self.repository.capture(text, questionID: questionID, id: "external-" + id)
+                try self.repository.fail(capture, message: message)
+                try self.reloadPending()
                 self.errorMessage = message
             } catch { self.errorMessage = "语音候选文字未能保存，请重试。" }
             self.showOverlay?()
@@ -179,7 +181,7 @@ import VoiceTodoCore
 
     func activate() {
         guard !demo else { return }
-        if settings.fnLocalSpeech { inputMethodStatus = "Fn 同时本机识别 · 只在录音期间使用麦克风" }
+        if settings.fnLocalSpeech { inputMethodStatus = "Fn 本机识别 · 只处理开头口令" }
         hotkey.choice = settings.hotkey
         hotkey.useInputMethod = settings.useInputMethod
         hotkeyConnected = hotkey.install()
@@ -322,10 +324,9 @@ import VoiceTodoCore
             return true
         } catch { errorMessage = "保存失败，文字尚未提交：\(friendly(error))"; return false }
     }
-    func retry(_ capture: InputCapture) { guard !busy else { return }; process(capture) }
+    func retry(_ capture: InputCapture) { guard !busy else { return }; process(capture, explicitlySubmitted: true) }
     func enqueueExternal(_ text: String, id: String, answerID: String? = nil) {
-        let isReply = answerID != nil && workspace.questions.contains { $0.id == answerID }
-        guard !demo, CommandText.accepts(text) || isReply else { return }
+        guard !demo, AutomaticCapturePolicy.accepts(text) else { return }
         do {
             let addressedAnswer = NaturalTaskIntent.addressed(text) ? (overlayQuestion?.id ?? question?.id) : nil
             _ = try repository.capture(text, questionID: answerID ?? addressedAnswer, id: "external-" + id, queued: true)
@@ -356,11 +357,11 @@ import VoiceTodoCore
                 }
                 try repository.update(capture, text: draft, detachQuestion: detach)
                 try reloadPending()
-                draft = ""; editingCaptureID = nil; process(capture)
+                draft = ""; editingCaptureID = nil; process(capture, explicitlySubmitted: true)
             } catch { errorMessage = friendly(error) }
         } else if submit(draft) { draft = ""; editingCaptureID = nil }
     }
-    private func process(_ capture: InputCapture) {
+    private func process(_ capture: InputCapture, explicitlySubmitted: Bool = false) {
         let external = capture.id.hasPrefix("external-")
         let traceID = String(capture.id.dropFirst("external-".count))
         if external { inputMethod.diagnostics?.record(.processing, id: traceID) }
@@ -373,6 +374,11 @@ import VoiceTodoCore
         processingTask = Task {
             defer { processNextQueued() }
             do {
+                // An old queued capture must not run after upgrading to strict
+                // reception. Opening a record and explicitly retrying is manual input.
+                if external && !explicitlySubmitted && !AutomaticCapturePolicy.accepts(capture.text) {
+                    throw UserFacingError("旧版自动接收的文字没有开头口令，已停止处理。请核对后手动重试或忽略。")
+                }
                 var proposal: Proposal
                 let inputContext = try repository.captureContext(for: capture)
                 if let issue = CaptureRecovery.issue(questionID: capture.questionID, context: inputContext, workspace: snapshot) {
@@ -418,7 +424,9 @@ import VoiceTodoCore
                     if !receivingInputMethod { showOverlay?() }
                 }
                 await notifications.reconcile(workspace.tasks)
-                if feedback, !receivingInputMethod, let question = overlayQuestion, settings.speakQuestions { speaker.speak(question.question) }
+                if feedback, !receivingInputMethod, let question = overlayQuestion, settings.speakQuestions {
+                    speaker.speak(question.question + (settings.useInputMethod ? " 请先说清单，再回答。" : ""))
+                }
             } catch {
                 if external { inputMethod.diagnostics?.record(.processingFailed, id: traceID) }
                 let issue = friendly(error)
@@ -426,7 +434,7 @@ import VoiceTodoCore
                 catch { errorMessage = "保存处理状态失败，原文：\(capture.text)" }
                 if errorMessage.isEmpty { errorMessage = issue }
                 phase = .idle
-                if !external || NaturalTaskIntent.explicitRequest(capture.text) { showOverlay?() }
+                if !external || explicitlySubmitted || AutomaticCapturePolicy.accepts(capture.text) { showOverlay?() }
             }
         }
     }
@@ -494,7 +502,9 @@ import VoiceTodoCore
             try repository.save(result.workspace, capture: input); workspace = result.workspace
             try reloadPending(); errorMessage = ""
             message = result.messages.joined(separator: "\n"); speaker.stop(); reconcile(); showOverlay?()
-            if let question = self.question, settings.speakQuestions { speaker.speak(question.question) }
+            if let question = self.question, settings.speakQuestions {
+                speaker.speak(question.question + (settings.useInputMethod ? " 请先说清单，再回答。" : ""))
+            }
         } catch {
             errorMessage = friendly(error)
             if let capture { try? repository.fail(capture, message: errorMessage) }

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
   <title id="title">随口清单 — 说一句记下，说一句勾掉</title>
-  <desc id="desc">产品流程示意，非应用截图。沿用已有语音入口，说“记一下，明天交材料”新建交材料，说“材料交好了”完成同一事项。外部转写接收目前为试验功能。</desc>
+  <desc id="desc">产品流程示意，非应用截图。沿用已有语音入口，说“帮我记录一下交材料”新建交材料，说“清单，材料交好了”完成同一事项。外部转写接收目前为试验功能。</desc>
   <rect width="1200" height="700" rx="24" fill="#F5F5EF"/>
   <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
     <g id="identity" fill="#203C34">
@@ -13,14 +13,14 @@
     <path d="M64 324 H1136" stroke="#D3DBD2" stroke-width="2"/>
     <g id="create-example">
       <text x="64" y="414" font-size="28" fill="#52655C">想起来时</text>
-      <text x="64" y="476" font-size="48" fill="#203C34">记一下，明天交材料</text>
+      <text x="64" y="476" font-size="48" fill="#203C34">帮我记录一下交材料</text>
       <path d="M616 458 H709 M696 445 L709 458 L696 471" fill="none" stroke="#52655C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
       <rect x="755" y="423" width="54" height="54" rx="10" fill="none" stroke="#286C52" stroke-width="3"/>
       <text x="831" y="469" font-size="48" font-weight="550" fill="#203C34">交材料</text>
     </g>
     <g id="complete-example">
       <text x="64" y="550" font-size="28" fill="#52655C">做完之后</text>
-      <text x="64" y="612" font-size="48" fill="#203C34">材料交好了</text>
+      <text x="64" y="612" font-size="48" fill="#203C34">清单，材料交好了</text>
       <path d="M616 594 H709 M696 581 L709 594 L696 607" fill="none" stroke="#52655C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
       <rect x="755" y="559" width="54" height="54" rx="10" fill="#286C52"/>
       <path d="M767 585 L778 596 L798 575" fill="none" stroke="#F5F5EF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>

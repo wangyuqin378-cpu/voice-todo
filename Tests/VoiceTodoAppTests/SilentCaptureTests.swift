@@ -34,7 +34,16 @@ import VoiceTodoCore
         XCTAssertTrue(try repository.pending().isEmpty)
         XCTAssertTrue(state.workspace.tasks.isEmpty)
 
-        state.enqueueExternal("帮我安排，我明天有个面试就好了", id: "plan")
+        for (index, text) in ["优化公开项目介绍", "根据GitHub最新内容整体更新GitHub主页",
+                              "新增公开项目水口清单（PC端产品，主推）", "土地",
+                              "我明天下午三点面试，提醒我一下", "面试完成了", "帮我安排明天面试"].enumerated() {
+            state.enqueueExternal(text, id: "ordinary-\(index)", answerID: "untrusted-answer")
+        }
+        XCTAssertTrue(try repository.pending().isEmpty)
+        XCTAssertTrue(state.workspace.tasks.isEmpty)
+        XCTAssertEqual(shown, 0)
+
+        state.enqueueExternal("帮我记录一下，我明天有个面试就好了", id: "plan")
         try await finish(state)
         XCTAssertEqual(shown, 1)
         XCTAssertEqual(processingPopups, 0)
@@ -44,12 +53,42 @@ import VoiceTodoCore
         XCTAssertTrue(state.workspace.questions.isEmpty)
         XCTAssertTrue(alerts.tasks.allSatisfy { $0.reminderAt == nil })
 
-        state.enqueueExternal("面试完成了", id: "done")
+        state.enqueueExternal("清单，面试完成了", id: "done")
         try await finish(state)
         XCTAssertEqual(shown, 2)
         XCTAssertEqual(state.workspace.tasks.count, 1)
         XCTAssertTrue(try XCTUnwrap(state.workspace.tasks.first).isCompleted)
         XCTAssertTrue(state.workspace.questions.isEmpty)
+    }
+
+    func testPendingQuestionDoesNotAuthorizeOrdinarySpeechAndOldQueueDoesNotAutoRun() async throws {
+        let name = "com.wyq.voicetodo.qa." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = AppSettings(defaults: defaults); settings.speakQuestions = false
+        let repository = try Repository(inMemory: true)
+        let legacy = try repository.capture("新增公开项目介绍", questionID: nil, id: "external-legacy", queued: true)
+        let state = try AppState(repository: repository, settings: settings, notifications: QuietNotifications())
+        var popups = 0
+        state.showOverlay = { popups += 1 }
+        state.enqueueExternal("提醒我报销", id: "create")
+        for _ in 0..<200 where state.busy { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(legacy.status, "failed")
+        XCTAssertTrue(legacy.issue.contains("没有开头口令"))
+        XCTAssertEqual(state.workspace.tasks.map(\.title), ["报销"])
+        XCTAssertEqual(popups, 1, "Legacy ordinary speech must not open a popup")
+        let question = try XCTUnwrap(state.workspace.questions.first)
+        let before = try repository.pending().count
+        for text in ["新增一个页面", "明天下午三点", "是的", "面试完成了"] {
+            state.enqueueExternal(text, id: UUID().uuidString, answerID: question.id)
+        }
+        XCTAssertEqual(try repository.pending().count, before)
+        XCTAssertEqual(state.workspace.questions.first, question)
+        XCTAssertNil(state.workspace.tasks.first?.reminderAt)
+        state.enqueueExternal("清单，不用提醒", id: "answer", answerID: question.id)
+        try await finish(state)
+        XCTAssertTrue(state.workspace.questions.isEmpty)
+        XCTAssertEqual(state.workspace.tasks.count, 1)
     }
     private func finish(_ state: AppState) async throws {
         for _ in 0..<100 where state.busy { try await Task.sleep(for: .milliseconds(10)) }

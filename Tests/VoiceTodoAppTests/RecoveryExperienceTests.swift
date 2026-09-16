@@ -91,6 +91,19 @@ import VoiceTodoCore
         XCTAssertTrue(state.workspace.questions.isEmpty)
         XCTAssertTrue(state.pending.isEmpty)
     }
+    func testAddressedAnswerWithoutQuestionCannotCreateOrCompleteAnything() async throws {
+        let repository = try Repository(inMemory: true)
+        let item = TodoItem(title: "交材料")
+        try repository.save(.init(tasks: [item]))
+        let state = try app(repository)
+        for text in ["清单，是的", "随口清单，不用提醒"] {
+            state.enqueueExternal(text, id: UUID().uuidString)
+            try await settle(state)
+            XCTAssertEqual(state.workspace.tasks, [item])
+            XCTAssertTrue(state.errorMessage.contains("没有对应的问题"), state.errorMessage)
+        }
+        XCTAssertEqual(state.pending.count, 2)
+    }
     func testChangedCandidateBlocksOldAnswer() throws {
         let repository = try Repository(inMemory: true)
         let item = TodoItem(title: "报销", needsReminder: true)

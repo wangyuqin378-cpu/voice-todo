@@ -41,7 +41,7 @@ import VoiceTodoCore
         }
         XCTFail("Capture did not settle")
     }
-    func testSuffixCapturePersistsConfiguredLeadAndDoesNotChangeOldTask() async throws {
+    func testPrefixedCapturePersistsConfiguredLeadAndDoesNotChangeOldTask() async throws {
         let name = "com.wyq.voicetodo.qa." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
         defer { defaults.removePersistentDomain(forName: name) }
@@ -67,13 +67,13 @@ import VoiceTodoCore
             XCTAssertTrue(state.errorMessage.isEmpty, state.errorMessage)
             time += 1
         }
-        try await say("我明天下午一点面试，提醒我一下")
+        try await say("提醒我明天下午一点面试")
         let task = try XCTUnwrap(state.workspace.tasks.last)
         XCTAssertEqual(task.title, "面试")
         XCTAssertEqual(task.plannedAt?.timeIntervalSince(task.reminderAt!), 1800)
         XCTAssertEqual(Calendar.current.component(.hour, from: task.plannedAt!), 13)
         XCTAssertEqual(state.workspace.tasks.first, old)
-        try await say("我10月1号要买车票，提醒我一下")
+        try await say("帮我记录一下，我10月1号要买车票，提醒我一下")
         XCTAssertEqual(state.workspace.tasks.last?.title, "买车票")
         XCTAssertEqual(Calendar.current.component(.month, from: state.workspace.tasks.last!.reminderAt!), 10)
         XCTAssertEqual(Calendar.current.component(.day, from: state.workspace.tasks.last!.reminderAt!), 1)
@@ -171,32 +171,40 @@ import VoiceTodoCore
             XCTAssertTrue(state.errorMessage.isEmpty, state.errorMessage)
             time += 1
         }
-        try await say("今天天气真好，我们聊点别的")
+        for text in ["今天天气真好，我们聊点别的", "优化公开项目介绍", "新增公开项目水口清单（PC端产品，主推）", "土地", "我10月1号要买车票，提醒我一下"] {
+            try await say(text)
+        }
         XCTAssertEqual(popups, 0); XCTAssertTrue(try repository.pending().isEmpty)
         try await say("提醒我报销")
         XCTAssertEqual(state.workspace.tasks.count, 1); XCTAssertTrue(state.awaitingFnReply)
+        let questionBefore = state.workspace.questions.first
+        try await say("新增一个按钮")
         try await say("明天下午六点")
+        XCTAssertEqual(state.workspace.questions.first, questionBefore)
+        XCTAssertEqual(state.workspace.tasks.count, 1)
+        XCTAssertNil(state.workspace.tasks.first?.reminderAt)
+        try await say("清单，明天下午六点")
         XCTAssertTrue(state.workspace.questions.isEmpty)
         let reminder = try XCTUnwrap(state.workspace.tasks.first?.reminderAt)
         XCTAssertEqual(Calendar.current.component(.hour, from: reminder), 18)
-        try await say("报销好了")
+        try await say("清单，报销好了")
         XCTAssertEqual(state.workspace.tasks.count, 1)
         XCTAssertTrue(try XCTUnwrap(state.workspace.tasks.first).isCompleted)
         XCTAssertTrue(ReminderPlanner.plans(tasks: state.workspace.tasks, delivered: [], scheduled: [], now: .now).isEmpty)
-        try await say("撤销")
+        try await say("清单，撤销")
         XCTAssertFalse(try XCTUnwrap(state.workspace.tasks.first).isCompleted)
         XCTAssertEqual(state.workspace.tasks.first?.reminderAt, reminder)
         XCTAssertEqual(popups, 4); XCTAssertEqual(legacyBegins, 0)
         XCTAssertTrue(speech.text.isEmpty)
-        try await say("帮我取消报销")
+        try await say("清单，帮我取消报销")
         XCTAssertTrue(state.workspace.tasks.isEmpty)
         XCTAssertTrue(try repository.load().tasks.isEmpty)
         XCTAssertTrue(notifications.tasks.isEmpty)
         XCTAssertTrue(state.message.contains("已取消"))
-        try await say("撤销")
+        try await say("清单，撤销")
         XCTAssertEqual(state.workspace.tasks.first?.reminderAt, reminder)
         XCTAssertEqual(notifications.tasks.first?.reminderAt, reminder)
-        try await say("取消报销的提醒")
+        try await say("清单，取消报销的提醒")
         XCTAssertEqual(state.workspace.tasks.count, 1)
         XCTAssertEqual(state.workspace.tasks.first?.reminderAt, reminder)
         XCTAssertEqual(notifications.tasks.first?.reminderAt, reminder)
@@ -204,7 +212,7 @@ import VoiceTodoCore
         XCTAssertEqual(popups, 7)
         try await say("提醒我明天下午六点面试")
         XCTAssertEqual(state.workspace.tasks.count, 2)
-        try await say("帮我取消明天下午 6 点的面试。")
+        try await say("清单，帮我取消明天下午 6 点的面试。")
         XCTAssertEqual(state.workspace.tasks.map(\.title), ["报销"])
         XCTAssertEqual(notifications.tasks.map(\.title), ["报销"])
         XCTAssertEqual(popups, 9)
@@ -237,9 +245,34 @@ import VoiceTodoCore
         subject.onCommand = { _, _, _ in commands += 1 }
         subject.onFailure = { words, _, _, _ in retained = words }
         subject.press(); try await settle { speech.starts == 1 }
-        speech.text = "材料交好了"; speech.onFailure?("interrupted")
-        XCTAssertEqual(commands, 0); XCTAssertEqual(retained, "材料交好了")
+        speech.text = "清单，材料交好了"; speech.onFailure?("interrupted")
+        XCTAssertEqual(commands, 0); XCTAssertEqual(retained, "清单，材料交好了")
         XCTAssertFalse(subject.active); XCTAssertTrue(speech.text.isEmpty)
+    }
+    func testInterruptedOrdinarySpeechIsNotSavedOrShownEvenDuringAQuestion() async throws {
+        let name = "com.wyq.voicetodo.qa." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = AppSettings(defaults: defaults)
+        settings.speakQuestions = false
+        let repository = try Repository(inMemory: true)
+        let speech = FakeFnSpeech()
+        // Exercise the app callback as well as the recognizer's import boundary.
+        let subject = FnSpeechCapture(speech: speech)
+        let state = try AppState(repository: repository, settings: settings,
+                                 notifications: FnNotifications(), fnSpeechCapture: subject)
+        var popups = 0
+        state.showOverlay = { popups += 1 }
+        subject.currentQuestionID = { "pending-question" }
+        for (index, words) in ["新增公开项目介绍", "面试完成了", "明天下午三点"].enumerated() {
+            subject.press(); try await settle { speech.starts == index + 1 }
+            speech.text = words; speech.onFailure?("识别中断")
+            XCTAssertFalse(subject.active)
+            XCTAssertTrue(try repository.pending().isEmpty)
+            XCTAssertTrue(state.workspace.tasks.isEmpty)
+            XCTAssertEqual(popups, 0)
+            XCTAssertEqual(state.lastVoiceOutcome, "识别中断")
+        }
     }
     func testEarlyAudioIsCopiedInOrderAndBoundedOverflowFails() async throws {
         let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1))

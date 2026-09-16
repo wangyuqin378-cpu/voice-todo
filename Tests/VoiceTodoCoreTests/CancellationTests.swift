@@ -28,7 +28,7 @@ final class CancellationTests: XCTestCase {
         XCTAssertTrue(ExternalFeedback.shouldShow(result, previous: state, proposal: try proposal(command, state)))
     }
     func testCancellationAndReminderOnlyWordings() throws {
-        for text in [command, "取消明天下午六点面试", "把明天下午六点的面试取消", "明天下午六点的面试取消了", "清单取消明天下午六点面试", "请帮我删掉明天下午六点的面试"] {
+        for text in [command, "清单，" + command, "随口清单，" + command, "取消明天下午六点面试", "把明天下午六点的面试取消", "明天下午六点的面试取消了", "清单取消明天下午六点面试", "请帮我删掉明天下午六点的面试"] {
             XCTAssertTrue(CommandText.accepts(text), text)
             XCTAssertTrue(try apply(text, Workspace(tasks: [interview])).workspace.tasks.isEmpty, text)
         }

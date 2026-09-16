@@ -132,7 +132,7 @@ import VoiceTodoCore
                 let answer = self.answerID
                 self.diagnostics?.record(.localSpeechFinal, id: token)
                 self.clear()
-                guard !words.isEmpty, CommandText.accepts(words) || answer != nil else {
+                guard AutomaticCapturePolicy.accepts(words) else {
                     self.diagnostics?.record(words.isEmpty ? .localSpeechEmpty : .ordinaryText, id: token)
                     self.onStatus?(words.isEmpty ? "Fn 本机识别 · 未听到文字" : "普通转写，未改变清单")
                     return
@@ -142,7 +142,7 @@ import VoiceTodoCore
                 self.onCommand?(words, token, answer)
             } catch {
                 guard self.id == token, !Task.isCancelled else { return }
-                self.fail("本机识别未完整结束，待办候选文字已保留，请检查后重试。")
+                self.fail("本机识别未完整结束，请再试一次。")
             }
         }
     }
@@ -152,6 +152,6 @@ import VoiceTodoCore
         diagnostics?.record(.localSpeechFailed, id: token)
         clear(); onStatus?(message)
         // An incomplete completion must never be applied. Ordinary speech stays transient.
-        onFailure?(CommandText.accepts(words) || answer != nil ? words : "", token, message, answer)
+        onFailure?(AutomaticCapturePolicy.accepts(words) ? words : "", token, message, answer)
     }
 }

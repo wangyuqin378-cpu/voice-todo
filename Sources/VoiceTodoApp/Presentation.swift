@@ -40,7 +40,7 @@ enum CaptureRecovery {
     }
 
     static func isUnboundReply(_ text: String) -> Bool {
-        ["是的", "是", "对", "对的", "好的", "好", "嗯", "嗯嗯", "没错", "可以", "确认", "不用提醒", "不用了", "不需要"].contains(TaskReducer.normalized(text))
+        ["是的", "是", "对", "对的", "好的", "好", "嗯", "嗯嗯", "没错", "可以", "确认", "不用提醒", "不用了", "不需要"].contains(TaskReducer.normalized(CommandText.body(text) ?? text))
     }
 }
 
@@ -65,7 +65,7 @@ extension AppState {
         }
         if !pending.isEmpty { return .init(title: "有 \(pending.count) 条未处理", symbol: "exclamationmark.bubble", needsAttention: true) }
         if question != nil { return .init(title: "有问题待补充 · 打开清单继续", symbol: "bubble.left.and.bubble.right") }
-        return .init(title: settings.useInputMethod ? "Fn 说一句 · 再按一次结束" : "\(settings.hotkey.label)说一句 · 再按结束", symbol: "checkmark.bubble")
+        return .init(title: settings.useInputMethod ? "Fn · 开头说“提醒我”或“帮我记录一下”" : "\(settings.hotkey.label)说一句 · 再按结束", symbol: "checkmark.bubble")
     }
 
     func recoveryIssue(_ capture: InputCapture) -> String? {

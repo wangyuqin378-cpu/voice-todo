@@ -72,18 +72,20 @@ final class LocalInterpreterTests: XCTestCase {
 }
 
 final class TranscriptionCaptureTests: XCTestCase {
-    func testUnaddressedReplyNeedsExplicitConversationContext() throws {
+    func testReplyStillNeedsOpeningAddressEvenWithConversationContext() throws {
         var normal = try XCTUnwrap(TranscriptionCapture(baseline: "", selection: NSRange(location: 0, length: 0)))
         normal.end(at: 1); normal.observe("明天下午三点", at: 2)
         XCTAssertNil(normal.ready(at: 4))
         var reply = try XCTUnwrap(TranscriptionCapture(baseline: "", selection: NSRange(location: 0, length: 0), questionID: "q"))
         reply.end(at: 1); reply.observe("明天下午三点", at: 2)
         XCTAssertNil(reply.ready(at: 3))
-        XCTAssertEqual(reply.ready(at: 4), "明天下午三点")
+        XCTAssertNil(reply.ready(at: 4))
+        reply.observe("清单，明天下午三点", at: 5)
+        XCTAssertEqual(reply.ready(at: 7), "清单，明天下午三点")
         XCTAssertEqual(reply.questionID, "q")
-        XCTAssertNil(reply.ready(at: 5))
+        XCTAssertNil(reply.ready(at: 8))
     }
-    func testDictationReplyCreatesReminderWithoutASecondShortcutOrWakePhrase() throws {
+    func testAddressedDictationReplyCreatesReminderWithSameShortcut() throws {
         let now = Dates.parse("2026-09-15T10:00:00+08:00")!
         let text = "清单提醒我报销"
         let proposal = try XCTUnwrap(LocalInterpreter.interpret(text, workspace: .init(), question: nil, now: now, timeZone: "Asia/Shanghai"))
@@ -92,7 +94,7 @@ final class TranscriptionCaptureTests: XCTestCase {
         let window = DictationReplyWindow(questionID: question.id, sourceID: "same-field", now: 1)
         let qid = try XCTUnwrap(window.answerID(sourceID: "same-field", pendingQuestionID: question.id, now: 5))
         var capture = try XCTUnwrap(TranscriptionCapture(baseline: text, selection: NSRange(location: text.utf16.count, length: 0), questionID: qid))
-        capture.end(at: 6); capture.observe(text + "明天下午三点", at: 7)
+        capture.end(at: 6); capture.observe(text + "清单，明天下午三点", at: 7)
         let answer = try XCTUnwrap(capture.ready(at: 9))
         let p = try XCTUnwrap(LocalInterpreter.interpret(answer, workspace: created, question: question, now: now, timeZone: "Asia/Shanghai"))
         let result = try TaskReducer.apply(p, to: created, inputID: capture.id, input: answer, answering: capture.questionID, now: now).workspace
