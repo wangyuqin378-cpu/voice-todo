@@ -6,7 +6,7 @@
 
 随口清单是一款 **Mac 菜单栏待办工具**：说一句记下事情，做完后再说一句，就能完成对应事项。它支持中文日期理解、按需设置一次性提醒、手动管理和撤销，清单保存在本机。
 
-**当前为 0.1.1 / build28 开发版，仅支持 macOS 26。** 尚无 Windows / Linux 客户端或公证后的通用安装包；直接接收其他语音产品的转写仍在试验。
+**当前源码为 0.1.1 / build29 开发版，仅支持 macOS 26。** 尚无 Windows / Linux 客户端或公证后的通用安装包；直接接收其他语音产品的转写仍在试验。
 
 <img src="assets/readme/hero.svg" width="100%" alt="随口清单流程示意：说“帮我记录一下交材料”，再说“清单，材料交好了”，完成同一事项。非应用截图。">
 
@@ -44,6 +44,8 @@ open 'dist/随口清单.app'
 
 随口清单想把这两步接在已有的语音输入习惯后面：想起来时说一句，做完时也说一句。现在默认复用 Fn 按键，由本应用在本机识别；接收 Typeless 等外部工具的转写仍是试验功能，没有官方集成或完整兼容性认证。
 
-[产品思路与后续方向](docs/PRODUCT.md) · [验证记录与待完成验收](docs/REVIEW-BUILD28.md) · [反馈问题](https://github.com/wangyuqin378-cpu/voice-todo/issues)
+build29 修复了手动改名后提醒仍显示旧标题的问题，264 项离线测试通过，实际安装与通知展示仍待设备验收。[build28](docs/REVIEW-BUILD28.md) 加入了固定开头口令。
+
+[产品思路与后续方向](docs/PRODUCT.md) · [验证记录与待完成验收](docs/REVIEW-BUILD29.md) · [反馈问题](https://github.com/wangyuqin378-cpu/voice-todo/issues)
 
 **许可：** 源码公开，尚未指定开源许可证。

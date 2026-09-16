@@ -6,7 +6,7 @@
 
 A small macOS menu-bar app for turning spoken Chinese into to-dos—and marking them done by speaking again. It keeps a local list, understands dates, sets one-time reminders when requested, and lets you undo an action.
 
-**Current version: 0.1.1 / build28, in development.** macOS 26 only; Windows and Linux clients are not available yet, and there is no notarized download. Receiving transcripts from other voice tools is experimental.
+**Current source version: 0.1.1 / build29, in development.** macOS 26 only; Windows and Linux clients are not available yet, and there is no notarized download. Receiving transcripts from other voice tools is experimental.
 
 <img src="assets/readme/hero-en.svg" width="100%" alt="随口清单: say a task to add it, then say it is done to complete it. Workflow illustration, not an app screenshot.">
 
@@ -44,6 +44,8 @@ Remembering a task often happens while doing something else. Opening another app
 
 The aim is to attach this small workflow to a voice-input habit you already have: say what needs doing, then say when it is done. The default Fn mode uses the app's own local speech recognition. Direct transcript reception from tools such as Typeless remains an experiment, with no official integration or compatibility certification.
 
-[Product direction](docs/PRODUCT.md) · [Validation and remaining device checks](docs/REVIEW-BUILD28.md) · [Report an issue](https://github.com/wangyuqin378-cpu/voice-todo/issues)
+Build29 fixes stale reminder text after a manual rename; 264 offline tests pass. Installation and actual notification display still need device acceptance. [Build28](docs/REVIEW-BUILD28.md) introduced the required opening phrases.
+
+[Product direction](docs/PRODUCT.md) · [Validation and remaining device checks](docs/REVIEW-BUILD29.md) · [Report an issue](https://github.com/wangyuqin378-cpu/voice-todo/issues)
 
 **License:** source is public; an open-source license has not been specified.

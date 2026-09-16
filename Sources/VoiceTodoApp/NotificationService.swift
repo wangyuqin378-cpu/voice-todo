@@ -72,6 +72,7 @@ import VoiceTodoCore
         // Remember elapsed requests across restarts even if a user dismissed the banner.
         let schedules = defaults.dictionary(forKey: "notification.scheduled") as? [String: Double] ?? [:]
         let pendingIDs = Set(pending.map(\.identifier))
+        let pendingByID = Dictionary(uniqueKeysWithValues: pending.map { ($0.identifier, $0) })
         for (id, timestamp) in schedules where allowed && timestamp <= Date.now.timeIntervalSince1970 && !pendingIDs.contains(id) {
             delivered.insert(id)
         }
@@ -93,15 +94,23 @@ import VoiceTodoCore
         center.removePending(pendingIDs.filter { $0.hasPrefix("todo.") && !desired.contains($0) })
         var scheduleTimes = schedules.filter { desired.contains($0.key) }
         var issue: String?
-        for plan in plans where !pendingIDs.contains(plan.identifier) {
+        for plan in plans {
+            var fireAt = plan.fireAt
+            if let existing = pendingByID[plan.identifier] {
+                guard existing.content.body != plan.title else { continue }
+                // Replace only a still-future request, using the same ID and
+                // deadline. A rename must not replay an elapsed/delivered alarm.
+                fireAt = schedules[plan.identifier].map(Date.init(timeIntervalSince1970:)) ?? plan.fireAt
+                guard fireAt > .now, schedules[plan.identifier] != nil || !plan.overdue else { continue }
+            }
             let content = UNMutableNotificationContent()
             content.title = plan.overdue ? "补发提醒" : "随口清单"
             content.body = plan.title; content.sound = .default
             content.userInfo = ["taskID": plan.taskID]
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, plan.fireAt.timeIntervalSinceNow), repeats: false)
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, fireAt.timeIntervalSinceNow), repeats: false)
             do {
                 try await center.add(UNNotificationRequest(identifier: plan.identifier, content: content, trigger: trigger))
-                scheduleTimes[plan.identifier] = plan.fireAt.timeIntervalSince1970
+                scheduleTimes[plan.identifier] = fireAt.timeIntervalSince1970
             } catch { issue = "有提醒未能安排，请检查系统通知设置。" }
         }
         defaults.set(scheduleTimes, forKey: "notification.scheduled")

@@ -94,6 +94,58 @@ import VoiceTodoCore
         XCTAssertEqual(center.requests.count, 1)
         XCTAssertNil(warning)
     }
+    func testRenamingUpdatesPendingContentWithoutMovingReminderOrAddingAnotherRequest() async throws {
+        let (center, defaults, service) = fixture()
+        var item = TodoItem(title: "旧名称", reminderAt: .now.addingTimeInterval(3600))
+        let id = ReminderPlanner.identifier(for: item)
+        await service.reconcile([item])
+        let scheduled = try XCTUnwrap((defaults.dictionary(forKey: "notification.scheduled") as? [String: Double])?[id])
+        item.title = "新名称"
+        await service.reconcile([item])
+        XCTAssertEqual(center.requests.count, 1)
+        let request = try XCTUnwrap(center.requests[id])
+        XCTAssertEqual(request.content.body, "新名称")
+        XCTAssertEqual(ReminderPlanner.identifier(for: item), id)
+        XCTAssertEqual((defaults.dictionary(forKey: "notification.scheduled") as? [String: Double])?[id], scheduled)
+        let trigger = try XCTUnwrap(request.trigger as? UNTimeIntervalNotificationTrigger)
+        XCTAssertEqual(trigger.timeInterval, scheduled - Date.now.timeIntervalSince1970, accuracy: 1)
+        await service.reconcile([item])
+        XCTAssertEqual(center.added, [id, id], "Unchanged content must not be rescheduled each time")
+    }
+    func testRenameFailurePreservesOriginalAlarmAndRetriesNewContent() async {
+        let (center, _, service) = fixture()
+        var item = TodoItem(title: "旧名称", reminderAt: .now.addingTimeInterval(3600))
+        let id = ReminderPlanner.identifier(for: item)
+        await service.reconcile([item])
+        var warning: String?
+        service.onStatus = { warning = $0 }
+        item.title = "新名称"; center.shouldFail = true
+        await service.reconcile([item])
+        XCTAssertEqual(center.requests[id]?.content.body, "旧名称")
+        XCTAssertNotNil(warning)
+        center.shouldFail = false
+        await service.reconcile([item])
+        XCTAssertEqual(center.requests[id]?.content.body, "新名称")
+        XCTAssertNil(warning)
+    }
+    func testRenameDoesNotResendDeliveredOrElapsedPendingAlarm() async {
+        let (center, defaults, service) = fixture()
+        var item = TodoItem(title: "旧名称", reminderAt: .now.addingTimeInterval(-60))
+        let id = ReminderPlanner.identifier(for: item)
+        await service.reconcile([item])
+        defaults.set([id: Date.now.addingTimeInterval(-1).timeIntervalSince1970], forKey: "notification.scheduled")
+        item.title = "新名称"
+        await service.reconcile([item])
+        XCTAssertEqual(center.added, [id], "An elapsed request may be delivering; do not replace it")
+        center.requests = [:]; center.delivered = [id]
+        await service.reconcile([item])
+        XCTAssertTrue(center.requests.isEmpty)
+        let restarted = NotificationService(center: center, defaults: defaults)
+        center.delivered = []
+        await restarted.reconcile([item])
+        XCTAssertTrue(center.requests.isEmpty)
+        XCTAssertEqual(center.added, [id])
+    }
     func testDeliveredReceiptPreventsDuplicateAcrossServiceRestart() async {
         let (center, defaults, service) = fixture()
         let item = TodoItem(title: "合成事项", reminderAt: .now.addingTimeInterval(-60))
