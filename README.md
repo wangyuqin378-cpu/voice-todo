@@ -1,55 +1,20 @@
-<p align="center">
-  <img src="assets/readme/hero.svg" width="100%" alt="随口清单：说一句记下，说一句勾掉。示意：帮我记录一下交材料 → 新建交材料；清单，材料交好了 → 完成交材料。">
-</p>
+# 随口清单 · Voice Todo
 
-**随口清单，把待办接在你已有的语音输入习惯后面。**
+[简体中文](README.zh-CN.md) · [Usage guide (中文)](docs/USAGE.md)
 
-你已经在用语音输入，就不应该为了记一件事，再打开一个工具、再按一套快捷键。随口清单想做的是：沿用原来的语音入口，听懂你要做什么，也听懂你已经做完什么。
+## What it is
 
-[试用与构建](#试用与构建) · [使用指南](docs/USAGE.md) · [产品思路](docs/PRODUCT.md) · [验证记录](docs/REVIEW-BUILD28.md)
+A small macOS menu-bar app for turning spoken Chinese into to-dos—and marking them done by speaking again. It keeps a local list, understands dates, sets one-time reminders when requested, and lets you undo an action.
 
-> **当前为 0.1.1 / build28 开发版，仅有 macOS 26 实现。** 直接接收其他语音产品的转写仍在试验；当前默认沿用 Fn，同时由本应用在本机识别。可自定义任意语音快捷键、Windows / Linux 客户端均尚未实现。[查看接入方式与边界 ↓](#沿用你的语音入口)
+**Current version: 0.1.1 / build28, in development.** macOS 26 only; Windows and Linux clients are not available yet, and there is no notarized download. Receiving transcripts from other voice tools is experimental.
 
-## 想到了说一句，做完了也说一句
+<img src="assets/readme/hero-en.svg" width="100%" alt="随口清单: say a task to add it, then say it is done to complete it. Workflow illustration, not an app screenshot.">
 
-假设清单最初是空的：
+## How to use it
 
-1. **“提醒我明天下午三点面试。”** → 新建「面试」，事项时间为明天 15:00，默认在 **14:50** 提醒。
-2. **“清单，面试完成了。”** → 完成这条事项，撤销尚未触发的提醒。只有名称几乎对应、目标唯一时才自动完成。
-3. **“清单，撤销。”** → 恢复事项，并重新核对提醒。
+### Build and open
 
-只想记下事情，可以说“帮我记录一下，明天有个面试”。没有提出提醒要求，就只记下，不替你增加通知。普通转写保持安静；识别到事项操作并保存成功后，才展示处理结果和撤销入口。
-
-**后台接收要求口令在最开头。** 新增用“提醒我…”或“帮我记录一下…”；完成、取消、撤销和回答追问用“清单，…”。没有开头口令，即使提到日期、安排或“完成了”，也不保存、不调用 AI。手动输入与主动使用独立录音不受这项限制。
-
-这里的图和对话是合成示例。文字到动作已有自动验收；真实语音入口、跨应用接收和通知实际送达仍需设备验证。
-
-## 沿用你的语音入口
-
-产品的入口应当跟随你的习惯。你使用微信输入法、Typeless 或其他语音工具，随口清单要补上的就是**文字到待办的这一步**：识别创建与完成意图，写入清单，必要时设置提醒。Fn 是当前实现的默认入口，不是产品概念的一部分。
-
-现有代码提供三种模式：
-
-1. **Fn · 本机识别（默认）**：同一个 Fn 触发随口清单自己的 Apple SpeechAnalyzer，原输入法照常工作。复用按键、各自识别，同时录音的兼容性仍需实机验证。
-2. **Fn · 接收输入法文字（试验）**：在本次 Fn 会话内接收输入框或新产生的剪贴板转写。受语音工具、目标输入框和系统权限影响，可能漏接。
-3. **独立录音按键（备用）**：右侧 Option / Control / Command，或清单中的录音按钮，使用本机识别。
-
-**“不用额外按键”是默认 Fn 流程的交互目标，不代表现在能接入所有语音软件。** 本仓库没有与微信输入法、Typeless 的官方集成，也没有这些产品的完整兼容性认证。任意按键 / 组合键配置与跨平台适配见 [后续方向](docs/PRODUCT.md#后续方向)。
-
-## 清单应该少打扰，也少自作主张
-
-- **创建与完成同样自然。** “清单，材料交好了”可以完成唯一对应的「交材料」；只说“材料”不会擅自勾掉「交签证材料」。有歧义时追问，没有原事项且完成内容明确时可以补记完成。
-- **新增就新增。** 再说一次同名事项，也不会覆盖旧任务。标题、日期和提醒的修改留在清单里手动处理。
-- **提醒早一点。** 有具体事项时间时，默认提前 10 分钟，可配置；“提醒我明天下午一点面试，提前半小时”按你说的执行。句尾提醒需先有开头口令，例如“帮我记录一下，我 10 月 1 号要买车票，提醒我一下”。
-- **没有时间就接着问。** 只有日期的提醒默认当天 09:00；连日期也没说清时，先保存并追问，也可以回答“清单，不用提醒”。
-- **做错了能恢复。** 完成、取消都可撤销；断网或解析失败会留下未处理记录，不伪装成已保存成功。
-- **想看时再打开。** 菜单栏进入待办 / 已完成，支持搜索、手动勾选、编辑和长文本输入。
-
-简单表达优先用本机规则处理，复杂表达再交给你配置的 AI；模型提出动作，由应用校验后写入。无需注册，没有订阅或自建服务端。
-
-## 试用与构建
-
-目前提供源码，**尚无公证后的通用安装包**。需要 macOS 26、完整 Xcode 26 / Swift 6.2；本机语音模式还需要设备支持并安装简体中文 SpeechAnalyzer 模型。
+You need macOS 26 and the full Xcode 26 / Swift 6.2 toolchain. Local voice recognition also needs a supported device with the Simplified Chinese SpeechAnalyzer model installed.
 
 ```sh
 git clone https://github.com/wangyuqin378-cpu/voice-todo.git
@@ -58,27 +23,27 @@ zsh scripts/build-app.sh
 open 'dist/随口清单.app'
 ```
 
-首次打开，在设置中授予输入监控与当前模式需要的权限：本机识别用麦克风，接收输入法文字用辅助功能；要提醒时再允许通知。默认 Fn 模式支持轻按开始 / 再按结束，也支持按住说话 / 松开结束，Esc 取消。
+The script creates a local development signature; it does not produce a notarized public release. See [build and signing details (中文)](docs/DEVELOPMENT.md) if Xcode is installed elsewhere.
 
-简单表达可先不配置 AI。复杂表达需填写自己的 API Key，默认支持阿里云百炼 `qwen-flash`，也可配置兼容接口与模型。仓库不含密钥。
+### Try one task
 
-[完整使用说明](docs/USAGE.md) · [构建、签名与测试](docs/DEVELOPMENT.md)
+1. Open settings and allow Input Monitoring and Microphone for the default **Fn · local recognition** mode. Allow notifications if you want reminders.
+2. Tap Fn to start, say **“提醒我明天下午三点面试。”**, then tap Fn to finish. Holding and releasing Fn is also supported; Esc cancels.
+3. Check that **面试** appears with tomorrow at 15:00 as the event time and, with the default ten-minute lead, 14:50 as the reminder.
+4. Say **“清单，面试完成了。”** to complete a uniquely matching task, or **“清单，撤销。”** to undo. You can also enter text or manage tasks from the menu-bar list.
 
-## 数据留在哪里
+**Background capture requires an opening phrase.** Start a new task with “提醒我…” or “帮我记录一下…”. Start completion, cancellation, undo and follow-up answers with “清单，…”. Speech without an opening phrase is ignored and is not sent to AI. Manual text input and actively started standalone recording allow natural wording.
 
-任务、原话、追问和撤销记录保存在本机；原始录音不持久保存，也不由随口清单上传。使用其他语音产品时，该产品的数据处理以它自己的设置为准。
+These are example commands, not a claim that every voice setup passes. Text-to-action tests exist; real microphone use, coexistence with other voice software and actual notification delivery still need device acceptance. If capture fails, use text input and check the [usage guide (中文)](docs/USAGE.md).
 
-本机规则处理不调用 AI；需要 AI 时，会把当前文字、清单中的标题 / 日期 / 完成状态和必要追问上下文发送到你配置的服务。手动填写的密钥存系统钥匙串。外部转写接收只围绕当前会话取文本，不持续保存键盘输入或剪贴板历史。[数据范围与备份说明](docs/USAGE.md#数据与备份)
+Simple commands use local rules. Complex wording needs your own configured AI provider and API key. Tasks stay on the Mac; AI requests can include the current text, task titles, dates, completion states and necessary follow-up context. Audio is not persisted or uploaded by this app. Keys use macOS Keychain. [Data details (中文)](docs/USAGE.md#数据与备份).
 
-## 进展与参与
+## Why this project exists
 
-2026-09-17 的 build28 回归覆盖固定开头口令、两种后台接收路径、追问、取消、旧队列恢复和中断录音；具体结果见 [本轮验证记录](docs/REVIEW-BUILD28.md)。[build27 历史验收](docs/REVIEW.md)另记录了 5 组真实 AI 对话与 36 条合成文字用例。这些结果不等于真实语音准确率或通知送达承诺。
+Remembering a task often happens while doing something else. Opening another app, finding a form and organizing the entry can interrupt that moment. Finishing a task should be just as easy to record as creating it.
 
-下一步优先验证真实语音流程、提高外部转写接收可靠性，再扩展快捷键配置与平台适配。通知目前优先调度最近 60 条；更多事项需要应用继续运行，系统睡眠与专注模式也会影响实际看到通知的时间。
+The aim is to attach this small workflow to a voice-input habit you already have: say what needs doing, then say when it is done. The default Fn mode uses the app's own local speech recognition. Direct transcript reception from tools such as Typeless remains an experiment, with no official integration or compatibility certification.
 
-- [产品定位与后续方向](docs/PRODUCT.md)：要解决的问题、交互原则、哪些仍未实现。
-- [实现结构](docs/ARCHITECTURE.md)：输入接入、任务校验、持久化与提醒。
-- [完整审阅记录](docs/REVIEW-BUILD28.md)：已验证结果、已知边界、待完成的设备验收。
-- [报告问题](https://github.com/wangyuqin378-cpu/voice-todo/issues)：请附应用版本、语音工具、入口模式、操作步骤和脱敏后的原话；不要提交 API Key 或私人清单。
+[Product direction](docs/PRODUCT.md) · [Validation and remaining device checks](docs/REVIEW-BUILD28.md) · [Report an issue](https://github.com/wangyuqin378-cpu/voice-todo/issues)
 
-许可证：尚未指定。
+**License:** source is public; an open-source license has not been specified.

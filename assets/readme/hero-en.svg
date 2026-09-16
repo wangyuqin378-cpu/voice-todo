@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">随口清单 — 说一句记下，说一句勾掉</title>
+  <desc id="desc">产品流程示意，非应用截图。沿用已有语音入口，说“帮我记录一下交材料”新建交材料，说“清单，材料交好了”完成同一事项。外部转写接收目前为试验功能。</desc>
+  <rect width="1200" height="700" rx="24" fill="#F5F5EF"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <g id="identity" fill="#203C34">
+      <path d="M67 67 H115 Q127 67 127 79 V113 Q127 125 115 125 H94 L80 138 V125 H67 Q55 125 55 113 V79 Q55 67 67 67 Z" fill="none" stroke="#286C52" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M73 96 L86 108 L110 83" fill="none" stroke="#286C52" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="154" y="121" font-size="70" font-weight="650">随口清单</text>
+      <text x="62" y="221" font-size="49" font-weight="550">Say it. Save it. Say it done.</text>
+      <text x="65" y="278" font-size="29" fill="#52655C">A small to-do companion for your voice workflow.</text>
+    </g>
+    <path d="M64 324 H1136" stroke="#D3DBD2" stroke-width="2"/>
+    <g id="create-example">
+      <text x="64" y="414" font-size="24" fill="#52655C">WHEN IT COMES TO MIND</text>
+      <text x="64" y="476" font-size="42" fill="#203C34">帮我记录一下交材料</text>
+      <path d="M616 458 H709 M696 445 L709 458 L696 471" fill="none" stroke="#52655C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="755" y="423" width="54" height="54" rx="10" fill="none" stroke="#286C52" stroke-width="3"/>
+      <text x="831" y="469" font-size="42" font-weight="550" fill="#203C34">交材料</text>
+    </g>
+    <g id="complete-example">
+      <text x="64" y="550" font-size="24" fill="#52655C">WHEN IT IS DONE</text>
+      <text x="64" y="612" font-size="42" fill="#203C34">清单，材料交好了</text>
+      <path d="M616 594 H709 M696 581 L709 594 L696 607" fill="none" stroke="#52655C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="755" y="559" width="54" height="54" rx="10" fill="#286C52"/>
+      <path d="M767 585 L778 596 L798 575" fill="none" stroke="#F5F5EF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="831" y="605" font-size="42" fill="#52655C">交材料</text>
+      <path d="M826 586 H980" stroke="#52655C" stroke-width="2"/>
+    </g>
+    <text x="1136" y="664" text-anchor="end" font-size="20" fill="#52655C">Chinese examples · workflow illustration</text>
+  </g>
+</svg>
