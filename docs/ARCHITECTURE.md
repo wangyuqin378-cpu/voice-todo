@@ -2,14 +2,21 @@
 
 原生 SwiftUI + AppKit，最低 macOS 26，无第三方 Swift 依赖。
 
-## 从输入到结果
+## 两种语音接入
 
-1. `GlobalHotkey` 被动观察按键，`FnSpeechCapture` 管理开始、结束、取消和超时。
-2. `SpeechService` 使用 SpeechAnalyzer 本机识别；模型准备期间短暂缓存开头音频，缓冲有上限，取消时释放。
-3. `NaturalTaskIntent` 过滤普通话语；文本输入和语音共用 `LocalInterpreter` / `AIClient`。
-4. `Repository` 先持久保存候选文字、唯一输入 ID、输入日期、时区和追问快照。
-5. 本机规则或 AI 生成 `Proposal`，`TaskReducer` 独立校验日期、任务 ID、状态、完成 / 取消证据及问题归属，再原子写入。
-6. 提交成功后显示结果，`NotificationService` 核对系统通知。
+产品目标是复用已有语音工具与入口。当前 `GlobalHotkey` 被动观察按键，再根据设置进入不同路径；Fn 路径仍固定使用 Fn，独立录音可选择右侧 Option / Control / Command。任意快捷键录制和其他操作系统适配尚未实现。
+
+- **本机识别（默认）**：`FnSpeechCapture` 管理开始、结束、取消和超时，`SpeechService` 用 SpeechAnalyzer 转写。模型准备期间短暂缓存开头音频，缓冲有上限，取消时释放。这条路径复用 Fn，但不使用第三方语音产品的转写结果。
+- **接收输入法文字（试验）**：`InputMethodBridge` 将本次 Fn 会话关联到目标应用与输入框，通过辅助功能与受约束的新剪贴板变化接收转写。拒绝密码框、旧内容及无法关联的上下文，不自动发送或删除其他应用文本。这不是第三方官方接口，兼容性依赖具体语音工具与目标输入框。
+
+手动及长文本输入直接进入相同的文字处理流程。两个语音路径的系统能力、权限与验收需求独立，不能用其中一条的成功证明另一条可靠。
+
+## 从文字到结果
+
+1. `NaturalTaskIntent` 过滤普通话语；文本输入和语音共用 `LocalInterpreter` / `AIClient`。
+2. `Repository` 先持久保存候选文字、唯一输入 ID、输入日期、时区和追问快照。
+3. 本机规则或 AI 生成 `Proposal`，`TaskReducer` 独立校验日期、任务 ID、状态、完成 / 取消证据及问题归属，再原子写入。
+4. 提交成功后显示结果，`NotificationService` 核对系统通知。
 
 AI 不能直接写数据。失败保留输入；重试不重复执行。处理期间清单改变则拒绝使用过期快照。明确完成和取消使用完整本地索引校验，不依赖模型“置信度”。
 
