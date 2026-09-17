@@ -11,6 +11,7 @@ public enum AutomaticCapturePolicy {
             if ["是", "是的", "对", "对的", "好", "好的", "嗯", "可以", "确认", "不用", "不用了", "不用提醒", "不需要提醒", "不要", "不是", "都还没做完"].contains(text) { return true }
             if text.range(of: #"^(?:(?:今天|明天|后天|周[一二三四五六日天]|星期[一二三四五六日天])?(?:凌晨|早上|上午|中午|下午|晚上)?[0-9零一二两三四五六七八九十点半分:：]+|今天|明天|后天|(?:不?是)?第[0-9一二三四五六七八九十]+[个条项](?:已经)?(?:好了|交了|完成了)?|不?是.{1,30}那[个条项])$"#, options: .regularExpression) != nil { return true }
         }
+        guard !ConversationIntent.isDiscussion(input) else { return false }
         if let body = CommandText.body(input), !body.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)).isEmpty { return true }
         // Quotations and instructions about wording are not personal plans.
         guard !["他说", "她说", "跟朋友说", "比如", "例如", "这句话", "这段话", "这段文案", "转写", "转录", "翻译", "在开头写", "“", "”", "「", "」", "\""].contains(where: text.contains) else { return false }

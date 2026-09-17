@@ -9,7 +9,7 @@ public enum OfflineInterpreter {
                                  now: Date, timeZone: String, defaultReminderHour: Int = 9,
                                  defaultReminderLeadMinutes: Int = 10, allowPlainCreation: Bool = false) -> Proposal? {
         let text = (CommandText.body(input) ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, text.count <= 6_000 else { return nil }
+        guard !text.isEmpty, text.count <= 6_000, !ConversationIntent.isDiscussion(input) else { return nil }
         func checked(_ proposal: Proposal) -> Proposal? {
             let adjusted = ReminderTiming.apply(to: proposal, input: input, now: now, leadMinutes: defaultReminderLeadMinutes)
             return (try? TaskReducer.apply(adjusted, to: workspace, inputID: UUID().uuidString,

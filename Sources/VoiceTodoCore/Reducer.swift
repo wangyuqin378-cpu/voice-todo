@@ -12,6 +12,11 @@ public enum TaskReducer {
         guard !proposal.actions.isEmpty, proposal.actions.count <= 100 else {
             throw UserFacingError("没有得到可执行的结果，原话已保留，请重试或修改文字。")
         }
+        // Validate the entire utterance, not a model-selected positive fragment
+        // stripped of its preceding condition. Do this before any mutation.
+        if ConversationIntent.isDiscussion(input), proposal.actions.contains(where: { $0.kind != .noop || $0.resolvesQuestionID != nil }) {
+            throw UserFacingError("这句话是在讨论方案或假设，还没有确定要记下的事项，清单没有变化。")
+        }
         let question = original.questions.first { $0.id == questionID }
         if proposal.actions.contains(where: { $0.kind == .undo }) {
             guard proposal.actions.count == 1 else { throw UserFacingError("请单独说撤销，其他内容已保留。") }

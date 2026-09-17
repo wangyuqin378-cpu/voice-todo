@@ -4,6 +4,36 @@ import VoiceTodoCore
 
 /// Opt-in live model acceptance with synthetic workspaces. Never opens the user's store.
 @MainActor final class LiveConversationTests: XCTestCase {
+    func testDiscussionVersusDefinitePlanWithRealModel() async throws {
+        guard ProcessInfo.processInfo.environment["VOICETODO_LIVE_INTENT_QA"] == "1" else { throw XCTSkip("Explicit live intent QA only") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "com.wyq.voicetodo"))
+        let configuration = AppSettings(defaults: defaults).configuration
+        let key = try AIKey.read(configuration: configuration, defaults: defaults)
+        let client = AIClient(configuration: configuration)
+        let now = Dates.parse("2026-09-17T10:00:00+08:00")!
+        let workspace = Workspace(tasks: [.init(id: "existing", title: "预订酒店")])
+        let cases: [(String, ProposedAction.Kind)] = [
+            ("如果我想住两天水屋呢，再帮我安排一下", .noop),
+            ("如果我想住两天水屋呢 ，再帮我安排一下 ，在仙本那住两天水屋", .noop),
+            ("要是多玩两天，行程怎么安排", .noop),
+            ("帮我规划一下明天的旅行路线", .noop),
+            ("帮我安排，我明天有个面试就好了", .create),
+            ("在海边住两晚这件事，帮我记一下", .create)
+        ]
+        for (input, kind) in cases {
+            // Bypass the local filter deliberately to exercise the actual model.
+            let proposal = try await AIRequestDeadline.run(seconds: 8) {
+                try await client.interpret(input: input, workspace: workspace, question: nil,
+                    key: key, now: now, timeZone: "Asia/Shanghai")
+            }
+            XCTAssertEqual(proposal.actions.map(\.kind), [kind], input)
+            let result = try TaskReducer.apply(proposal, to: workspace, inputID: UUID().uuidString,
+                input: input, now: now, timeZone: "Asia/Shanghai").workspace
+            XCTAssertEqual(result.tasks.first, workspace.tasks.first)
+            XCTAssertEqual(result.tasks.count, kind == .noop ? 1 : 2, input)
+            XCTAssertTrue(result.questions.isEmpty, input)
+        }
+    }
     func testSuffixAndAdvanceReminderWithRealModel() async throws {
         guard ProcessInfo.processInfo.environment["VOICETODO_LIVE_QA"] == "1" else { throw XCTSkip("Explicit live QA only") }
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "com.wyq.voicetodo"))

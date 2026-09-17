@@ -64,6 +64,27 @@ private actor HeldUnderstanding: AIInterpreting {
         XCTAssertFalse(message.contains("填写"))
         XCTAssertEqual(CaptureRecovery.explanation("网络失败"), "网络失败")
     }
+    func testTravelDiscussionDoesNotReadKeyCallAIOrStoreCapture() async throws {
+        let ai = StubUnderstanding(.init(actions: [.init(kind: .create, title: "住两天水屋", noReminder: true)]))
+        var keyReads = 0
+        let existing = TodoItem(title: "预订酒店")
+        let state = try app(ai: ai, workspace: .init(tasks: [existing]), keyReader: {
+            keyReads += 1; return "fake-qa-key-not-a-credential"
+        })
+        var overlays = 0
+        state.showOverlay = { overlays += 1 }
+        for input in ["如果我想住两天水屋呢，再帮我安排一下",
+            "如果我想住两天水屋呢 ，再帮我安排一下 ，在仙本那住两天水屋",
+            "帮我规划一下明天的旅行路线"] {
+            try await say(input, to: state)
+        }
+        XCTAssertEqual(state.workspace.tasks, [existing])
+        XCTAssertTrue(state.workspace.questions.isEmpty)
+        XCTAssertTrue(state.pending.isEmpty)
+        XCTAssertEqual(overlays, 0)
+        XCTAssertEqual(keyReads, 0)
+        let calls = await ai.calls; XCTAssertEqual(calls, 0)
+    }
     func testNoKeyCreateCompleteCancelUndoAndDuplicateDelivery() async throws {
         let ai = StubUnderstanding(); let state = try app(ai: ai)
         try await say("我明天下午三点面试，提醒我一下", to: state)

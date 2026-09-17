@@ -91,7 +91,7 @@ struct MainView: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
             if state.settings.useInputMethod {
-                Text("自然说安排、提醒或完成，例如“明天有个面试”“材料交好了”，无需固定开头。")
+                Text("说确定的安排、提醒或完成，无需固定开头。假设和询问方案不自动记下。")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             if let id = state.editingCaptureID, let capture = state.pending.first(where: { $0.id == id }) {

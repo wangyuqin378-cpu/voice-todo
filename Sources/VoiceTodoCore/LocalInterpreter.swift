@@ -11,6 +11,7 @@ public enum LocalInterpreter {
     }
     private static func rawInterpret(_ input: String, workspace: Workspace, question: FollowUp?,
                                      now: Date, timeZone: String, defaultReminderHour: Int) -> Proposal? {
+        guard !ConversationIntent.isDiscussion(input) else { return nil }
         let text = CommandText.body(input) ?? input.trimmingCharacters(in: .whitespacesAndNewlines)
         let words = text.trimmingCharacters(in: CharacterSet(charactersIn: "。！! \n\t"))
         let normalized = TaskReducer.normalized(words)
