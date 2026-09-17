@@ -197,7 +197,7 @@ import VoiceTodoCore
         hotkey.useInputMethod = settings.useInputMethod
         hotkeyConnected = hotkey.install()
         processNextQueued()
-        Task { await refreshPermissions(); await notifications.reconcile(workspace.tasks) }
+        reconcile()
     }
     func refreshPermissions() async {
         guard !demo else { return }
@@ -210,7 +210,13 @@ import VoiceTodoCore
         notificationsAllowed = notificationStatus == .authorized || notificationStatus == .provisional
         hotkey.choice = settings.hotkey; hotkeyConnected = hotkey.install()
     }
-    func reconcile() { if !demo { Task { await refreshPermissions(); await notifications.reconcile(workspace.tasks) } } }
+    func reconcile() {
+        guard !demo else { return }
+        // Task changes must reach notification cancellation without waiting for
+        // permission labels and unrelated keyboard/microphone checks to refresh.
+        Task { await notifications.reconcile(workspace.tasks) }
+        Task { await refreshPermissions() }
+    }
     private func syncDictationShortcut() {
         hotkey.dictationShortcut = settings.dictationShortcut
         fnSpeech.shortcutLabel = settings.dictationShortcut.label

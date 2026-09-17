@@ -42,6 +42,7 @@ import VoiceTodoCore
     private var delivered: Set<String>
     private var reconciling = false
     private var nextTasks: [TodoItem]?
+    private var latestReminderIDs: Set<String> = []
     var onStatus: ((String?) -> Void)?
     var onOpen: (() -> Void)?
     init(center: (any NotificationCenterClient)? = nil, defaults: UserDefaults = .standard) {
@@ -54,6 +55,15 @@ import VoiceTodoCore
     }
     func authorization() async -> UNAuthorizationStatus { await center.authorization() }
     func reconcile(_ tasks: [TodoItem]) async {
+        latestReminderIDs = Set(tasks.filter { !$0.isCompleted && $0.reminderAt != nil }.map(ReminderPlanner.identifier))
+        // Retract known alarms immediately. Cancellation must not wait behind
+        // a slow notification-center read or an older reconciliation pass.
+        let schedules = defaults.dictionary(forKey: "notification.scheduled") as? [String: Double] ?? [:]
+        let obsolete = schedules.keys.filter { !latestReminderIDs.contains($0) }
+        if !obsolete.isEmpty {
+            center.removePending(obsolete); center.removeDelivered(obsolete)
+            defaults.set(schedules.filter { latestReminderIDs.contains($0.key) }, forKey: "notification.scheduled")
+        }
         nextTasks = tasks
         guard !reconciling else { return }
         reconciling = true
@@ -65,9 +75,12 @@ import VoiceTodoCore
     }
     private func reconcileOnce(_ tasks: [TodoItem]) async {
         let pending = await center.pending()
+        guard nextTasks == nil else { return }
         let shown = await center.deliveredIDs()
+        guard nextTasks == nil else { return }
         delivered.formUnion(shown)
         let status = await authorization()
+        guard nextTasks == nil else { return }
         let allowed = status == .authorized || status == .provisional
         // Remember elapsed requests across restarts even if a user dismissed the banner.
         let schedules = defaults.dictionary(forKey: "notification.scheduled") as? [String: Double] ?? [:]
@@ -93,8 +106,14 @@ import VoiceTodoCore
         let desired = Set(plans.map(\.identifier))
         center.removePending(pendingIDs.filter { $0.hasPrefix("todo.") && !desired.contains($0) })
         var scheduleTimes = schedules.filter { desired.contains($0.key) }
+        defer {
+            // An add may suspend while a task is completed/cancelled. Keep only
+            // receipts that still belong to the latest workspace, even on return.
+            defaults.set(scheduleTimes.filter { latestReminderIDs.contains($0.key) }, forKey: "notification.scheduled")
+        }
         var issue: String?
         for plan in plans {
+            guard nextTasks == nil else { return }
             var fireAt = plan.fireAt
             if let existing = pendingByID[plan.identifier] {
                 guard existing.content.body != plan.title else { continue }
@@ -110,10 +129,17 @@ import VoiceTodoCore
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, fireAt.timeIntervalSinceNow), repeats: false)
             do {
                 try await center.add(UNNotificationRequest(identifier: plan.identifier, content: content, trigger: trigger))
-                scheduleTimes[plan.identifier] = fireAt.timeIntervalSince1970
+                if latestReminderIDs.contains(plan.identifier) {
+                    scheduleTimes[plan.identifier] = fireAt.timeIntervalSince1970
+                } else {
+                    // The in-flight add cannot be cancelled through UN's API.
+                    // Retract its result before any further asynchronous reads.
+                    center.removePending([plan.identifier]); center.removeDelivered([plan.identifier])
+                    scheduleTimes.removeValue(forKey: plan.identifier)
+                }
             } catch { issue = "有提醒未能安排，请检查系统通知设置。" }
         }
-        defaults.set(scheduleTimes, forKey: "notification.scheduled")
+        guard nextTasks == nil else { return }
         let remaining = tasks.filter { !$0.isCompleted && $0.reminderAt != nil && !delivered.contains(ReminderPlanner.identifier(for: $0)) }.count
         onStatus?(issue ?? (remaining > plans.count ? "提醒较多，已优先安排最近的 60 条；请保持应用运行以继续安排后续提醒。" : nil))
     }

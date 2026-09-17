@@ -10,16 +10,38 @@ import VoiceTodoCore
     var delivered: Set<String> = []
     var added: [String] = []
     var shouldFail = false
+    var holdPending = false
+    var pendingGate: CheckedContinuation<Void, Never>?
+    var holdAdd = false
+    var addGate: CheckedContinuation<Void, Never>?
+
     func requestPermission() async -> Bool { status == .authorized }
     func authorization() async -> UNAuthorizationStatus { status }
-    func pending() async -> [UNNotificationRequest] { Array(requests.values) }
+    func pending() async -> [UNNotificationRequest] {
+        if holdPending { await withCheckedContinuation { pendingGate = $0 } }
+        return Array(requests.values)
+    }
     func deliveredIDs() async -> Set<String> { delivered }
     func removePending(_ ids: [String]) { ids.forEach { requests.removeValue(forKey: $0) } }
     func removeDelivered(_ ids: [String]) { delivered.subtract(ids) }
     func add(_ request: UNNotificationRequest) async throws {
         if shouldFail { throw UserFacingError("test failure") }
+        if holdAdd { await withCheckedContinuation { addGate = $0 } }
         added.append(request.identifier); requests[request.identifier] = request
     }
+}
+
+@MainActor private final class SlowPermissionNotifications: TaskNotifications {
+    var onStatus: ((String?) -> Void)?
+    var onOpen: (() -> Void)?
+    var tasks: [TodoItem] = []
+    var permissionGate: CheckedContinuation<Void, Never>?
+    func requestPermission() async -> Bool { true }
+    func authorization() async -> UNAuthorizationStatus {
+        await withCheckedContinuation { permissionGate = $0 }
+        return .authorized
+    }
+    func reconcile(_ tasks: [TodoItem]) async { self.tasks = tasks }
 }
 
 @MainActor final class NotificationServiceTests: XCTestCase {
@@ -29,6 +51,87 @@ import VoiceTodoCore
         addTeardownBlock { defaults.removePersistentDomain(forName: name) }
         let center = TestNotificationCenter()
         return (center, defaults, NotificationService(center: center, defaults: defaults))
+    }
+    private func settle(_ condition: () -> Bool) async throws {
+        for _ in 0..<200 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("Notification operation did not reach its controlled suspension")
+    }
+    func testCompletionDuringSystemReadNeverAddsTheObsoleteReminder() async throws {
+        let (center, _, service) = fixture()
+        var item = TodoItem(title: "合成事项", reminderAt: .now.addingTimeInterval(-60))
+        center.holdPending = true
+        let operation = Task { await service.reconcile([item]) }
+        try await settle { center.pendingGate != nil }
+        item.completedAt = .now
+        await service.reconcile([item])
+        center.holdPending = false; center.pendingGate?.resume(); center.pendingGate = nil
+        await operation.value
+        XCTAssertTrue(center.added.isEmpty, "A completed task must not be submitted even temporarily")
+        XCTAssertTrue(center.requests.isEmpty)
+    }
+    func testCancellationDuringAddRetractsBeforeTheNextSystemRead() async throws {
+        let (center, defaults, service) = fixture()
+        let item = TodoItem(title: "合成事项", reminderAt: .now.addingTimeInterval(-60))
+        let id = ReminderPlanner.identifier(for: item)
+        center.holdAdd = true
+        let operation = Task { await service.reconcile([item]) }
+        try await settle { center.addGate != nil }
+        await service.reconcile([])
+        center.holdPending = true; center.holdAdd = false
+        center.addGate?.resume(); center.addGate = nil
+        try await settle { center.pendingGate != nil }
+        XCTAssertNil(center.requests[id], "Do not wait for another potentially slow system read to retract a cancelled reminder")
+        XCTAssertNil((defaults.dictionary(forKey: "notification.scheduled") as? [String: Double])?[id])
+        center.holdPending = false; center.pendingGate?.resume(); center.pendingGate = nil
+        await operation.value
+    }
+    func testLatestWorkspaceWinsWhenCompletionIsUndoneWhileScheduling() async throws {
+        let (center, _, service) = fixture()
+        let item = TodoItem(title: "合成事项", reminderAt: .now.addingTimeInterval(60))
+        center.holdPending = true
+        let operation = Task { await service.reconcile([item]) }
+        try await settle { center.pendingGate != nil }
+        var complete = item; complete.completedAt = .now
+        await service.reconcile([complete])
+        await service.reconcile([item])
+        center.holdPending = false; center.pendingGate?.resume(); center.pendingGate = nil
+        await operation.value
+        XCTAssertEqual(center.added, [ReminderPlanner.identifier(for: item)])
+        XCTAssertEqual(center.requests.count, 1)
+    }
+    func testExistingReminderIsCancelledWhileEarlierReconciliationIsSuspended() async throws {
+        let (center, defaults, service) = fixture()
+        let item = TodoItem(title: "合成事项", reminderAt: .now.addingTimeInterval(60))
+        let id = ReminderPlanner.identifier(for: item)
+        await service.reconcile([item])
+        center.holdPending = true
+        let operation = Task { await service.reconcile([item]) }
+        try await settle { center.pendingGate != nil }
+        await service.reconcile([])
+        XCTAssertNil(center.requests[id])
+        XCTAssertNil((defaults.dictionary(forKey: "notification.scheduled") as? [String: Double])?[id])
+        center.holdPending = false; center.pendingGate?.resume(); center.pendingGate = nil
+        await operation.value
+        XCTAssertEqual(center.added, [id])
+    }
+    func testManualCompletionSynchronizesReminderWithoutWaitingForPermissionRefresh() async throws {
+        let (_, defaults, _) = fixture()
+        let repository = try Repository(inMemory: true)
+        let item = TodoItem(title: "合成事项", reminderAt: .now.addingTimeInterval(60))
+        try repository.save(.init(tasks: [item]))
+        let notifications = SlowPermissionNotifications(); notifications.tasks = [item]
+        let state = try AppState(repository: repository, settings: AppSettings(defaults: defaults), notifications: notifications, aiKeyReader: { "" })
+        state.toggle(item)
+        try await settle { notifications.permissionGate != nil }
+        // Give queued main-actor reconciliation a turn while permission remains suspended.
+        await Task.yield()
+        XCTAssertTrue(try XCTUnwrap(try repository.load().tasks.first).isCompleted)
+        XCTAssertTrue(try XCTUnwrap(notifications.tasks.first).isCompleted,
+            "Cancelling the task alarm must not depend on a UI permission query")
+        notifications.permissionGate?.resume(); notifications.permissionGate = nil
     }
     func testNewUrgentReminderDisplacesLastOfFullQueue() async {
         let (center, _, service) = fixture()
