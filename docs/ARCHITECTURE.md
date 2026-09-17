@@ -15,7 +15,7 @@
 
 1. `AutomaticCapturePolicy` 筛选具有事项意图的表达，不限制关键词位置。输入框、剪贴板、Fn 本机识别和应用入队使用相同规则；短回答需要仍有效、绑定来源的追问上下文。普通聊天不持久化、不调用 AI，手动输入 / 独立录音视为主动提交。
 2. `Repository` 先持久保存候选文字、唯一输入 ID、输入日期、时区和追问快照。
-3. 有 Key 时 AI 优先生成 `Proposal`；无 Key、服务错误或模型动作校验失败时尝试 `LocalInterpreter` / `OfflineInterpreter`，仍不支持则保留原话供手动整理，`TaskReducer` 独立校验日期、任务 ID、状态、完成 / 取消证据及问题归属，再原子写入。
+3. 服务配置与凭证可用、未处于失败暂停时，AI 优先生成 `Proposal`；无 Key、服务错误或模型动作校验失败时尝试 `LocalInterpreter` / `OfflineInterpreter`，仍不支持则保留原话供手动整理，`TaskReducer` 独立校验日期、任务 ID、状态、完成 / 取消证据及问题归属，再原子写入。
 4. 提交成功后显示结果，`NotificationService` 核对系统通知。
 
 旧自动队列按当前意图规则复核；没有相关意图的文字保留给用户核对。混合表达在副本上一次性校验、提交，不执行半段。
@@ -44,3 +44,11 @@ SwiftData 保存任务 payload、元数据和输入记录。任务协议、追�
 - 人工设备：物理 Fn、真实麦克风、其他输入法同时录音、全屏、睡眠 / 唤醒、通知实际出现、30 条真人表达的准确率和延迟。
 
 测试替身和文本验收不代替最后一项。截图证明可见状态，不证明后台交付或完整辅助技术可访问性。
+
+## AI 协议与运行状态（build31）
+
+`AIConfiguration` 区分 Chat Completions 与 Anthropic Messages。旧配置解码时默认自动；根据 endpoint 决定格式，不根据 Key 或模型名猜服务商。请求保持原 endpoint / model；官方百炼与 DeepSeek 才携带其专属参数。Claude 使用 `/v1/messages`、`x-api-key`、`anthropic-version` 和独立 system 字段，不发送 Chat JSON mode / temperature / 厂商 thinking 参数。依据 [Claude Messages 官方协议](https://platform.claude.com/docs/en/api/messages/create) 与 [DeepSeek 官方协议](https://api-docs.deepseek.com/api/create-chat-completion/) 实现。
+
+`AICompatibility` 只在 400 / 422 明确拒绝已知可选参数时调整一次，成功解码后缓存能力；不会在 401 / 403 / 404 上尝试别的模型或服务商。不支持的 response_format / thinking 参数可以去除，明确提示的 max_tokens 可转换成 max_completion_tokens；输出仍需完整 JSON 和 reducer 校验。不会从自由文本中截取局部 JSON 执行。
+
+`AIHealth` 以配置和 Key 的内存摘要隔离运行状态。认证 / 明确配置错误暂停至配置变化或手动检查成功；网络 / 限流 / 临时 / 非法响应错误暂停 60 秒后允许下次输入重试。任务动作本身被 reducer 拒绝不会禁用服务。健康状态与能力缓存均不落盘，重启后重新尝试；不记录 Key、服务响应正文或原话。连接检查只接受非空 noop 动作，不会更改任务，新配置仅在检查通过后保存。

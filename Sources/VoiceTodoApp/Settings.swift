@@ -48,6 +48,7 @@ enum HotkeyChoice: String, CaseIterable, Identifiable {
 @MainActor @Observable final class AppSettings {
     var baseURL: String { didSet { defaults.set(baseURL, forKey: "ai.baseURL") } }
     var model: String { didSet { defaults.set(model, forKey: "ai.model") } }
+    var apiProtocol: AIProtocol { didSet { defaults.set(apiProtocol.rawValue, forKey: "ai.protocol") } }
     var hotkey: HotkeyChoice { didSet { defaults.set(hotkey.rawValue, forKey: "hotkey") } }
     var speakQuestions: Bool { didSet { defaults.set(speakQuestions, forKey: "speakQuestions") } }
     var onboardingDone: Bool { didSet { defaults.set(onboardingDone, forKey: "onboardingDone") } }
@@ -61,6 +62,7 @@ enum HotkeyChoice: String, CaseIterable, Identifiable {
         self.defaults = defaults
         baseURL = defaults.string(forKey: "ai.baseURL") ?? AIConfiguration().baseURL
         model = defaults.string(forKey: "ai.model") ?? AIConfiguration().model
+        apiProtocol = AIProtocol(rawValue: defaults.string(forKey: "ai.protocol") ?? "") ?? .automatic
         hotkey = HotkeyChoice(rawValue: defaults.string(forKey: "hotkey") ?? "") ?? .rightOption
         speakQuestions = defaults.object(forKey: "speakQuestions") as? Bool ?? true
         onboardingDone = defaults.bool(forKey: "onboardingDone")
@@ -71,5 +73,5 @@ enum HotkeyChoice: String, CaseIterable, Identifiable {
         let lead = defaults.object(forKey: "reminder.leadMinutes") as? Int ?? 10
         defaultReminderLeadMinutes = (0...1440).contains(lead) ? lead : 10
     }
-    var configuration: AIConfiguration { AIConfiguration(baseURL: baseURL, model: model) }
+    var configuration: AIConfiguration { AIConfiguration(baseURL: baseURL, model: model, apiProtocol: apiProtocol) }
 }

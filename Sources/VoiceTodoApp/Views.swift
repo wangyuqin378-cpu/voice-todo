@@ -57,6 +57,9 @@ struct MainView: View {
             }.frame(maxHeight: .infinity)
             if let question = state.question { QuestionView(state: state, question: question) }
             RecentActivityView(state: state)
+            if !state.understandingNotice.isEmpty {
+                Button(state.understandingNotice) { openSettings() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
+            }
             composer
             if !state.reminderWarning.isEmpty {
                 Button(state.reminderWarning) { openSettings() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.orange)
@@ -225,6 +228,7 @@ struct SettingsView: View {
     @State private var changingAI = false
     @State private var newBaseURL = ""
     @State private var newModel = ""
+    @State private var newProtocol: AIProtocol = .automatic
     var close: () -> Void
     private var entryMode: Binding<Int> {
         Binding(get: { !settings.useInputMethod ? 2 : (settings.fnLocalSpeech ? 0 : 1) }, set: { value in
@@ -270,7 +274,7 @@ struct SettingsView: View {
             }.padding(26)
         }.frame(width: 570, height: 750).tint(accent)
             .task {
-                newBaseURL = settings.baseURL; newModel = settings.model
+                newBaseURL = settings.baseURL; newModel = settings.model; newProtocol = settings.apiProtocol
                 if !state.demo { await state.refreshPermissions() }
             }
     }
@@ -282,7 +286,7 @@ struct SettingsView: View {
                     .font(.system(size: 13))
                 Text("普通转写不弹窗、不保存。识别到事项操作后显示结果；未成功的文字可在清单中处理。").font(.system(size: 13)).foregroundStyle(.secondary)
                 if settings.useInputMethod {
-                    Text("不用固定开头：个人安排、提醒、完成、取消都可自然表达，提醒放在句尾也可以。识别到相关意图才处理，普通聊天保持安静；有 Key 优先 AI，无 Key 使用本机规则。")
+                    Text("不用固定开头：个人安排、提醒、完成、取消都可自然表达，提醒放在句尾也可以。识别到相关意图才处理，普通聊天保持安静；AI 配置匹配且服务可用时优先理解，否则使用本机规则。")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Text("同名事项也会新增。已有事项的时间和提醒请在清单中手动编辑；语音完成需名称完整对应且唯一匹配。").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -339,7 +343,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("AI 增强（可选）").font(.headline)
                 Text("不填 API Key 也能创建、完成、取消和提醒。无法自动理解的原话会保留，可修改或手动整理。").font(.system(size: 13)).foregroundStyle(.secondary)
-                Text("配置 Key 后优先用 AI 理解。本次文字和清单中的事项名称、日期及完成状态会发送给你配置的服务；原始录音不会上传。").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("密钥、接口与模型匹配且服务可用时，优先用 AI 理解。本次文字和清单中的事项名称、日期及完成状态会发送给你配置的服务；原始录音不会上传。").font(.system(size: 12)).foregroundStyle(.secondary)
                 Text("当前模型：\(settings.model)").font(.system(size: 13))
                 if AIKey.hasLocalReference {
                     Text("使用本机已有配置，无需再次填写 API Key。").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -352,9 +356,14 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("密钥只在连接检查成功后替换，保存在系统钥匙串。").font(.system(size: 12)).foregroundStyle(.secondary)
                         SecureField("新的 API Key", text: $apiKey).accessibilityLabel("新的 AI API Key")
+                        Picker("接口类型", selection: $newProtocol) {
+                            ForEach(AIProtocol.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                        Text("Key 是访问凭证，不决定模型。请填写服务商提供的地址和模型；不要求模型名称包含 flash。自动模式识别官方 Claude 地址，其他地址默认 OpenAI 兼容接口。")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
                         TextField("接口地址（HTTPS）", text: $newBaseURL)
                         TextField("模型名称", text: $newModel)
-                        Button("检查并保存新密钥") { state.checkConnection(key: apiKey, configuration: .init(baseURL: newBaseURL, model: newModel)) }
+                        Button("检查并保存新密钥") { state.checkConnection(key: apiKey, configuration: .init(baseURL: newBaseURL, model: newModel, apiProtocol: newProtocol)) }
                             .disabled(state.checkingConnection || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.demo)
                     }.textFieldStyle(.roundedBorder).padding(.top, 10)
                 }.disabled(state.checkingConnection)

@@ -103,7 +103,7 @@ import VoiceTodoCore
         defer {
             if let path = ProcessInfo.processInfo.environment["VOICETODO_LIVE_QA_OUTPUT"],
                let data = try? JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted, .sortedKeys]) {
-                try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+                try? data.write(to: URL(fileURLWithPath: path + ".natural.json"), options: .atomic)
             }
         }
         let texts = ["帮我安排，我明天有个面试就好了", "记一下，后天上午十点面试，明天下午三点提醒我",
@@ -113,10 +113,17 @@ import VoiceTodoCore
             let original = Workspace(tasks: [.init(title: "报销", createdAt: now)])
             let start = Date.now
             let proposal = try await client.interpret(input: input, workspace: original, question: nil, key: key, now: now, timeZone: "Asia/Shanghai")
-            let result = try TaskReducer.apply(proposal, to: original, inputID: UUID().uuidString, input: input, now: now)
+            // Keep the synthetic input and proposed action even when safety validation rejects it.
             rows.append(["input": input, "seconds": Date.now.timeIntervalSince(start),
-                         "proposal": try JSONSerialization.jsonObject(with: JSONEncoder().encode(proposal)),
-                         "workspace": try JSONSerialization.jsonObject(with: JSONEncoder().encode(result.workspace))])
+                         "proposal": try JSONSerialization.jsonObject(with: JSONEncoder().encode(proposal))])
+            let result: AppliedResult
+            do {
+                result = try TaskReducer.apply(proposal, to: original, inputID: UUID().uuidString, input: input, now: now)
+            } catch {
+                rows[rows.count - 1]["rejectedByApplication"] = error.localizedDescription
+                throw error
+            }
+            rows[rows.count - 1]["workspace"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(result.workspace))
             if index >= 4 {
                 XCTAssertEqual(result.workspace.tasks, original.tasks, input)
                 XCTAssertFalse(ExternalFeedback.shouldShow(result, previous: original, proposal: proposal), input)

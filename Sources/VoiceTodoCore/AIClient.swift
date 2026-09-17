@@ -1,21 +1,5 @@
 import Foundation
 
-public struct AIConfiguration: Codable, Equatable, Sendable {
-    public var baseURL: String
-    public var model: String
-    public init(baseURL: String = "https://dashscope.aliyuncs.com/compatible-mode/v1", model: String = "qwen-flash") {
-        self.baseURL = baseURL; self.model = model
-    }
-    public func endpoint() throws -> URL {
-        guard let url = URL(string: baseURL), url.scheme == "https", url.host != nil,
-              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else {
-            throw UserFacingError("AI 地址需要是有效的 HTTPS 接口地址。")
-        }
-        guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw UserFacingError("请填写模型名称。") }
-        return url.appendingPathComponent("chat/completions")
-    }
-}
-
 public protocol AIInterpreting: Sendable {
     func interpret(input: String, workspace: Workspace, question: FollowUp?, key: String,
                    now: Date, timeZone: String, defaultReminderHour: Int,
@@ -24,17 +8,17 @@ public protocol AIInterpreting: Sendable {
 
 public struct AIClient: AIInterpreting {
     public var configuration: AIConfiguration
-    public init(configuration: AIConfiguration) { self.configuration = configuration }
+    private let session: URLSession
+    private let compatibility: AICompatibility
+    public init(configuration: AIConfiguration, session: URLSession = .shared, compatibility: AICompatibility = .shared) {
+        self.configuration = configuration; self.session = session; self.compatibility = compatibility
+    }
 
     public func interpret(input: String, workspace: Workspace, question: FollowUp?, key: String,
                           now: Date = .now, timeZone: String = TimeZone.current.identifier,
                           defaultReminderHour: Int = 9, defaultReminderLeadMinutes: Int = 10) async throws -> Proposal {
         guard !key.isEmpty else { throw UserFacingError("AI 尚未配置，可继续使用本机规则或手动添加事项。") }
         guard input.count <= 25_000 else { throw UserFacingError("一次最多处理 25,000 个字符，请分段输入。") }
-        var request = URLRequest(url: try configuration.endpoint(), timeoutInterval: 30)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let taskContext = workspace.tasks.map { task -> [String: Any] in
             ["id": task.id, "title": task.title, "completed": task.isCompleted,
              "needs_reminder": task.needsReminder,
@@ -62,48 +46,127 @@ public struct AIClient: AIInterpreting {
         }
         let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         guard data.count < 160_000 else { throw UserFacingError("当前任务记录较多，超出本版单次理解范围；请先使用列表手动处理。原话已保留。") }
-        var body: [String: Any] = [
-            "model": configuration.model,
-            "messages": [["role": "system", "content": Self.instructions],
-                         ["role": "user", "content": String(decoding: data, as: UTF8.self)]],
-            "temperature": 0.1,
-            "response_format": ["type": "json_object"],
-            "max_tokens": 6000
-        ]
-        if configuration.model.lowercased().contains("qwen") { body["enable_thinking"] = false }
-        if configuration.model.lowercased().contains("deepseek") { body["thinking"] = ["type": "disabled"] }
+        let userContent = String(decoding: data, as: UTF8.self)
+        let profile = await compatibility.profile(for: configuration)
+        let request = try makeRequest(key: key, content: userContent, profile: profile)
+        var (responseData, response) = try await session.data(for: request)
+        // Retry only an explicitly rejected optional parameter, once, at the same endpoint/model.
+        // A bad key or missing model is never "fixed" by trying another provider.
+        var negotiated: AICompatibility.Profile?
+        if let http = response as? HTTPURLResponse,
+           let adjusted = Self.compatibleProfile(status: http.statusCode, data: responseData, current: profile),
+           configuration.resolvedProtocol == .chatCompletions {
+            try Task.checkCancellation()
+            (responseData, response) = try await session.data(for: makeRequest(key: key, content: userContent, profile: adjusted))
+            negotiated = adjusted
+        }
+        guard let http = response as? HTTPURLResponse else { throw AIServiceError(.temporary, "AI 没有返回有效响应。") }
+        guard (200..<300).contains(http.statusCode) else { throw Self.serviceError(status: http.statusCode, data: responseData) }
+        guard responseData.count < 1_000_000 else { throw AIServiceError(.invalidResponse, "AI 响应过大，未采用结果。") }
+        let proposal = try decodeProposal(responseData)
+        if let negotiated { await compatibility.remember(negotiated, for: configuration) }
+        return ReminderTiming.apply(to: proposal, input: input, now: now, leadMinutes: defaultReminderLeadMinutes)
+    }
+
+    func makeRequest(key: String, content: String, profile: AICompatibility.Profile) throws -> URLRequest {
+        let endpoint = try configuration.endpoint()
+        var request = URLRequest(url: endpoint, timeoutInterval: 30)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["model": configuration.model, "max_tokens": 6000]
+        if configuration.resolvedProtocol == .anthropicMessages {
+            request.setValue(key, forHTTPHeaderField: "x-api-key")
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+            body["system"] = Self.instructions
+            body["messages"] = [["role": "user", "content": content]]
+            // Do not send Chat Completions JSON mode, temperature or vendor thinking switches.
+        } else {
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            body["messages"] = [["role": "system", "content": Self.instructions], ["role": "user", "content": content]]
+            if !profile.basic {
+                body["response_format"] = ["type": "json_object"]
+                let host = endpoint.host?.lowercased() ?? ""
+                if ["dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com"].contains(host), configuration.model.lowercased().hasPrefix("qwen") {
+                    body["enable_thinking"] = false
+                    body["temperature"] = 0.1
+                }
+                if host == "api.deepseek.com", configuration.model.lowercased().hasPrefix("deepseek") {
+                    body["thinking"] = ["type": "disabled"]
+                    body["temperature"] = 0.1
+                }
+            }
+            if profile.completionTokens {
+                body.removeValue(forKey: "max_tokens"); body["max_completion_tokens"] = 6000
+            }
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (responseData, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw UserFacingError("AI 没有返回有效响应。原话已保留。") }
-        guard (200..<300).contains(http.statusCode) else {
-            let explanation: String
-            switch http.statusCode {
-            case 401, 403: explanation = "AI 密钥无效或没有访问权限，请检查设置。"
-            case 429: explanation = "AI 使用额度不足或请求过于频繁，请稍后重试。"
-            case 400, 404: explanation = "AI 接口或模型不兼容，请检查地址和模型名称。"
-            default: explanation = "AI 服务暂时不可用（\(http.statusCode)），原话已保留。"
-            }
-            throw UserFacingError(explanation)
-        }
-        guard responseData.count < 1_000_000 else { throw UserFacingError("AI 响应过大，未处理任何任务。") }
-        struct Completion: Decodable {
-            struct Choice: Decodable {
-                struct Message: Decodable { var content: String? }
-                var message: Message
-                var finish_reason: String?
-            }
-            var choices: [Choice]
-        }
-        let result = try JSONDecoder().decode(Completion.self, from: responseData)
-        guard let choice = result.choices.first, choice.finish_reason != "length",
-              let content = choice.message.content, let json = content.data(using: .utf8) else {
-            throw UserFacingError("AI 返回的结果不完整，原话已保留。")
-        }
+        return request
+    }
+
+    func decodeProposal(_ data: Data) throws -> Proposal {
         do {
-            let proposal = try JSONDecoder().decode(Proposal.self, from: json)
-            return ReminderTiming.apply(to: proposal, input: input, now: now, leadMinutes: defaultReminderLeadMinutes)
+            let content: String
+            if configuration.resolvedProtocol == .anthropicMessages {
+                struct Message: Decodable {
+                    struct Block: Decodable { var type: String; var text: String? }
+                    var content: [Block]; var stop_reason: String?
+                }
+                let message = try JSONDecoder().decode(Message.self, from: data)
+                guard message.stop_reason == "end_turn", message.content.allSatisfy({ $0.type == "text" || $0.type == "thinking" || $0.type == "redacted_thinking" }) else {
+                    throw AIServiceError(.invalidResponse, "AI 返回的结果不完整，未采用结果。")
+                }
+                content = message.content.filter { $0.type == "text" }.compactMap(\.text).joined()
+            } else {
+                struct Completion: Decodable {
+                    struct Choice: Decodable {
+                        struct Message: Decodable { var content: String? }
+                        var message: Message; var finish_reason: String?
+                    }
+                    var choices: [Choice]
+                }
+                let result = try JSONDecoder().decode(Completion.self, from: data)
+                guard let choice = result.choices.first,
+                      choice.finish_reason == nil || choice.finish_reason == "stop",
+                      let text = choice.message.content else {
+                    throw AIServiceError(.invalidResponse, "AI 返回的结果不完整，未采用结果。")
+                }
+                content = text
+            }
+            // Only unwrap an entire JSON fence; never extract a fragment from arbitrary prose.
+            var json = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            for fence in ["```json\n", "```\n"] where json.hasPrefix(fence) && json.hasSuffix("```") {
+                json = String(json.dropFirst(fence.count).dropLast(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+                break
+            }
+            let proposal = try JSONDecoder().decode(Proposal.self, from: Data(json.utf8))
+            guard !proposal.actions.isEmpty else { throw AIServiceError(.invalidResponse, "AI 未返回任务判断，未采用结果。") }
+            return proposal
+        } catch let error as AIServiceError { throw error }
+        catch { throw AIServiceError(.invalidResponse, "AI 返回了无法识别的任务格式，未采用结果。") }
+    }
+
+    static func compatibleProfile(status: Int, data: Data, current: AICompatibility.Profile) -> AICompatibility.Profile? {
+        guard [400, 422].contains(status), data.count < 64_000 else { return nil }
+        let detail = String(decoding: data, as: UTF8.self).lowercased()
+        guard ["unsupported", "not support", "unknown", "unrecognized", "unexpected", "不支持"].contains(where: detail.contains) else { return nil }
+        var profile = current
+        if ["response_format", "enable_thinking", "thinking", "temperature"].contains(where: detail.contains) { profile.basic = true }
+        if detail.contains("max_tokens"), detail.contains("max_completion_tokens") { profile.completionTokens = true }
+        return profile == current ? nil : profile
+    }
+
+    static func serviceError(status: Int, data: Data) -> AIServiceError {
+        switch status {
+        case 401, 403: return .init(.credentials, "AI 密钥无效或没有访问权限，请检查设置。")
+        case 402: return .init(.credentials, "AI 账户额度不足，请检查服务账户。")
+        case 404, 405: return .init(.configuration, "AI 接口或模型不存在，请检查地址、接口类型与模型。")
+        case 400, 422:
+            let detail = data.count < 64_000 ? String(decoding: data, as: UTF8.self).lowercased() : ""
+            let configError = ["model_not_found", "invalid_model", "unknown model", "model does not exist", "model not found", "unsupported", "not support", "不支持"].contains(where: detail.contains)
+            return .init(configError ? .configuration : .temporary, "AI 未接受请求，请检查接口类型、模型与服务限制。")
+        case 429: return .init(.temporary, "AI 请求过于频繁或额度不足。")
+        default: return .init(.temporary, "AI 服务暂时不可用（\(status)）。")
         }
-        catch { throw UserFacingError("AI 返回了无法识别的任务格式，未改变清单，原话已保留。") }
     }
 
     public static let instructions = """

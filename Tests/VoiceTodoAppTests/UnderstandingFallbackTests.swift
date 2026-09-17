@@ -13,10 +13,13 @@ import VoiceTodoCore
 private actor StubUnderstanding: AIInterpreting {
     var calls = 0
     let proposal: Proposal?
-    init(_ proposal: Proposal? = nil) { self.proposal = proposal }
+    var failure: Error?
+    init(_ proposal: Proposal? = nil, failure: Error? = nil) { self.proposal = proposal; self.failure = failure }
+    func recover() { failure = nil }
     func interpret(input: String, workspace: Workspace, question: FollowUp?, key: String,
                    now: Date, timeZone: String, defaultReminderHour: Int, defaultReminderLeadMinutes: Int) async throws -> Proposal {
         calls += 1
+        if let failure { throw failure }
         guard let proposal else { throw URLError(.notConnectedToInternet) }
         return proposal
     }
@@ -117,6 +120,47 @@ private actor StubUnderstanding: AIInterpreting {
         try await say("材料交好了", to: state)
         XCTAssertEqual(state.workspace.tasks, [old])
         XCTAssertEqual(state.workspace.questions.first?.intent, .complete)
+    }
+    func testBrokenConfigurationIsNotCalledForEveryTaskAndCheckCanRecover() async throws {
+        let ai = StubUnderstanding(.init(actions: [.init(kind: .noop)]), failure: AIServiceError(.credentials, "密钥无效"))
+        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
+        try await say("记一下买牛奶", to: state)
+        try await say("记一下买车票", to: state)
+        var count = await ai.calls; XCTAssertEqual(count, 1)
+        XCTAssertEqual(state.workspace.tasks.map(\.title), ["买牛奶", "买车票"])
+        XCTAssertTrue(state.understandingNotice.contains("本机规则"))
+        XCTAssertFalse(state.connectionOK)
+        await ai.recover()
+        state.checkLocalConnection()
+        for _ in 0..<200 where state.checkingConnection { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertTrue(state.connectionOK)
+        XCTAssertTrue(state.understandingNotice.isEmpty)
+        try await say("记一下买面包", to: state)
+        count = await ai.calls; XCTAssertEqual(count, 3, "Manual check and subsequent input must reach the service again")
+        XCTAssertEqual(state.workspace.tasks.count, 2, "AI noop wins after recovery")
+    }
+    func testNetworkOutageUsesLocalRulesForSubsequentInputsDuringCooldown() async throws {
+        let ai = StubUnderstanding(); let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
+        try await say("记一下买牛奶", to: state)
+        try await say("记一下买车票", to: state)
+        let count = await ai.calls; XCTAssertEqual(count, 1)
+        XCTAssertEqual(state.workspace.tasks.count, 2)
+        XCTAssertTrue(state.understandingNotice.contains("1 分钟"))
+    }
+    func testConfigurationChangeRestoresAttemptWithoutChangingKey() async throws {
+        let ai = StubUnderstanding(.init(actions: [.init(kind: .noop)]), failure: AIServiceError(.configuration, "模型不存在"))
+        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
+        try await say("记一下买牛奶", to: state)
+        await ai.recover(); state.settings.model = "correct-model"
+        try await say("记一下买车票", to: state)
+        let count = await ai.calls; XCTAssertEqual(count, 2)
+        XCTAssertEqual(state.workspace.tasks.count, 1)
+        XCTAssertTrue(state.understandingNotice.isEmpty)
+    }
+    func testConnectionCheckRequiresNoopAndDoesNotWriteTasks() {
+        XCTAssertThrowsError(try AppState.validateConnection(.init(actions: [.init(kind: .create, title: "wrong task")])))
+        XCTAssertThrowsError(try AppState.validateConnection(.init(actions: [])))
+        XCTAssertNoThrow(try AppState.validateConnection(.init(actions: [.init(kind: .noop)])))
     }
     func testNegativeMixedInputCannotPartiallyCompleteWithoutAI() async throws {
         let old = TodoItem(title: "报销")

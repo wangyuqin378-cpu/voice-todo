@@ -13,6 +13,8 @@ import VoiceTodoCore
     var message = ""
     var errorMessage = ""
     var reminderWarning = ""
+    var understandingNotice = ""
+    @ObservationIgnored private var aiHealth = AIHealth()
     var connectionStatus = "尚未检查"
     var connectionOK = false
     var checkingConnection = false
@@ -394,15 +396,27 @@ import VoiceTodoCore
                 // phrases. Missing keys, service errors or invalid proposals fall
                 // back to deterministic paths without blocking basic task use.
                 var understood: Proposal? = snapshot.appliedInputs.contains(capture.id) ? Proposal(actions: [.init(kind: .noop)]) : nil
-                let key = (try? aiKeyReader.map { try $0() }
-                    ?? AIKey.read(configuration: settings.configuration, defaults: settings.defaults)) ?? ""
-                if understood == nil, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let configuration = settings.configuration
+                var key = ""
+                understandingNotice = ""
+                do {
+                    key = try aiKeyReader.map { try $0() }
+                        ?? AIKey.read(configuration: configuration, defaults: settings.defaults)
+                } catch {
+                    connectionOK = false
+                    connectionStatus = "无法读取当前 AI 配置，已使用本机规则。请到设置检查连接。"
+                    understandingNotice = connectionStatus
+                }
+                aiHealth.prepare(configuration: configuration, key: key)
+                if understood == nil, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, aiHealth.canAttempt() {
                     do {
-                        let candidate = try await (aiInterpreter ?? AIClient(configuration: settings.configuration)).interpret(
+                        let candidate = try await (aiInterpreter ?? AIClient(configuration: configuration)).interpret(
                             input: capture.text, workspace: snapshot, question: currentQuestion, key: key,
                             now: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone,
                             defaultReminderHour: settings.defaultReminderHour,
                             defaultReminderLeadMinutes: settings.defaultReminderLeadMinutes)
+                        aiHealth.success()
+                        connectionOK = true; connectionStatus = "AI 可用 · " + configuration.model
                         let adjusted = ReminderTiming.apply(to: candidate, input: capture.text, now: .now,
                             leadMinutes: settings.defaultReminderLeadMinutes)
                         _ = try TaskReducer.apply(adjusted, to: snapshot, inputID: capture.id,
@@ -410,7 +424,16 @@ import VoiceTodoCore
                             inputDate: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone)
                         understood = adjusted
                     } catch is CancellationError { throw CancellationError() }
-                    catch { /* The original text still has a local/manual path. */ }
+                    catch {
+                        aiHealth.failure(error)
+                        connectionOK = false
+                        connectionStatus = aiHealth.status.isEmpty ? "本次 AI 结果未通过校验，已尝试本机规则。" : aiHealth.status
+                        understandingNotice = connectionStatus
+                    }
+                }
+                if understood == nil, !aiHealth.canAttempt() {
+                    connectionOK = false; connectionStatus = aiHealth.status
+                    understandingNotice = connectionStatus
                 }
                 if understood == nil {
                     understood = LocalInterpreter.interpret(capture.text, workspace: snapshot, question: currentQuestion,
@@ -549,13 +572,24 @@ import VoiceTodoCore
             do {
                 let configuration = newConfiguration ?? settings.configuration
                 let cleanedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
-                _ = try await AIClient(configuration: configuration).interpret(
+                guard !cleanedKey.isEmpty else { throw UserFacingError("请填写该服务的 API Key。") }
+                await AICompatibility.shared.reset(configuration)
+                let result = try await AIClient(configuration: configuration).interpret(
                     input: "仅连接测试，不要改变任务，返回 noop。", workspace: Workspace(), question: nil, key: cleanedKey)
+                try Self.validateConnection(result)
                 try Keychain.write(cleanedKey)
                 settings.baseURL = configuration.baseURL; settings.model = configuration.model
+                settings.apiProtocol = configuration.apiProtocol
+                aiHealth.prepare(configuration: configuration, key: cleanedKey); aiHealth.success()
+                understandingNotice = ""
                 settings.defaults.removeObject(forKey: AIKey.referenceKey)
                 connectionOK = true; connectionStatus = "连接成功 · 密钥已存入钥匙串"
             } catch { connectionStatus = friendly(error) }
+        }
+    }
+    static func validateConnection(_ proposal: Proposal) throws {
+        guard !proposal.actions.isEmpty, proposal.actions.allSatisfy({ $0.kind == .noop }) else {
+            throw AIServiceError(.invalidResponse, "AI 连接测试未返回预期格式，未保存新配置。")
         }
     }
     func checkLocalConnection() {
@@ -563,11 +597,25 @@ import VoiceTodoCore
         checkingConnection = true; connectionStatus = "正在检查…"; connectionOK = false
         Task {
             defer { checkingConnection = false }
+            let configuration = settings.configuration
             do {
-                let key = try AIKey.read(configuration: settings.configuration, defaults: settings.defaults)
-                _ = try await AIClient(configuration: settings.configuration).interpret(input: "仅连接测试，返回 noop。", workspace: .init(), question: nil, key: key)
-                connectionOK = true; connectionStatus = "本地 Key 连接成功"
-            } catch { connectionStatus = friendly(error) }
+                let key = try aiKeyReader.map { try $0() } ?? AIKey.read(configuration: configuration, defaults: settings.defaults)
+                aiHealth.prepare(configuration: configuration, key: key)
+                guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    aiHealth.success(); understandingNotice = ""; connectionStatus = "未配置 AI · 本机规则可用"; return
+                }
+                await AICompatibility.shared.reset(configuration)
+                let result = try await (aiInterpreter ?? AIClient(configuration: configuration)).interpret(
+                    input: "仅连接测试，返回 noop。", workspace: .init(), question: nil, key: key,
+                    now: .now, timeZone: TimeZone.current.identifier,
+                    defaultReminderHour: settings.defaultReminderHour, defaultReminderLeadMinutes: settings.defaultReminderLeadMinutes)
+                try Self.validateConnection(result)
+                aiHealth.success(); understandingNotice = ""
+                connectionOK = true; connectionStatus = "AI 连接成功 · " + configuration.model
+            } catch {
+                aiHealth.failure(error)
+                connectionStatus = aiHealth.status.isEmpty ? friendly(error) : aiHealth.status
+            }
         }
     }
     func requestMicrophone() {
@@ -597,6 +645,7 @@ import VoiceTodoCore
     private func friendly(_ error: Error) -> String {
         if error is CancellationError { return "处理已取消，原话已保留。" }
         if let error = error as? UserFacingError { return error.message }
+        if let error = error as? AIServiceError { return error.message }
         if let error = error as? URLError {
             return error.code == .timedOut ? "连接超时，原话已保留，请重试。" : "网络连接失败，原话已保留，请联网后重试。"
         }

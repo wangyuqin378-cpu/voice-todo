@@ -20,6 +20,7 @@ import VoiceTodoCore
             }
             let settings = AppSettings()
             settings.baseURL = configuration.baseURL; settings.model = configuration.model
+            settings.apiProtocol = configuration.apiProtocol
             return 0
         } catch {
             print((error as? UserFacingError)?.message ?? "本地 AI 配置接入失败。")
@@ -27,7 +28,7 @@ import VoiceTodoCore
         }
     }
     static func importFromStandardInput() async -> Int32 {
-        struct Import: Decodable { var key: String; var baseURL: String; var model: String }
+        struct Import: Decodable { var key: String; var baseURL: String; var model: String; var apiProtocol: AIProtocol? }
         do {
             let data = try FileHandle.standardInput.read(upToCount: 16_385) ?? Data()
             guard data.count <= 16_384 else { throw UserFacingError("配置过大，未保存。") }
@@ -36,7 +37,7 @@ import VoiceTodoCore
             guard !key.isEmpty else { throw UserFacingError("密钥为空，未保存。") }
             let old = try Keychain.read()
             guard old.isEmpty || old == key else { throw UserFacingError("应用已有不同密钥，请在设置中修改，未覆盖。") }
-            let configuration = AIConfiguration(baseURL: value.baseURL, model: value.model)
+            let configuration = AIConfiguration(baseURL: value.baseURL, model: value.model, apiProtocol: value.apiProtocol ?? .automatic)
             let result = try await AIClient(configuration: configuration).interpret(
                 input: "仅连接测试，不要改变任务，返回 noop。", workspace: .init(), question: nil, key: key)
             guard result.actions.allSatisfy({ $0.kind == .noop }), !result.actions.isEmpty else {
@@ -45,6 +46,7 @@ import VoiceTodoCore
             try Keychain.write(key)
             let settings = AppSettings()
             settings.baseURL = configuration.baseURL; settings.model = configuration.model
+            settings.apiProtocol = configuration.apiProtocol
             print("AI 连接通过；密钥已存入系统钥匙串。")
             return 0
         } catch {
