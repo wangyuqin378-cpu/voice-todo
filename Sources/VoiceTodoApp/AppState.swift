@@ -25,7 +25,7 @@ import VoiceTodoCore
     var hotkeyAllowed = GlobalHotkey.allowed
     var hotkeyConnected = false
     var inputMethodAllowed = InputMethodBridge.allowed
-    var inputMethodStatus = "Fn 后台接收 · 自然表达识别事项"
+    var inputMethodStatus = "后台接收 · 自然表达识别事项"
     var receivingInputMethod = false
     var inputMethodFinishing = false
     var fnStarting = false
@@ -191,8 +191,9 @@ import VoiceTodoCore
 
     func activate() {
         guard !demo else { return }
-        if settings.fnLocalSpeech { inputMethodStatus = "Fn 本机识别 · 自然表达识别事项" }
+        inputMethodStatus = "\(settings.dictationShortcut.label) · \(settings.fnLocalSpeech ? "本机识别" : "接收输入法文字")"
         hotkey.choice = settings.hotkey
+        syncDictationShortcut()
         hotkey.useInputMethod = settings.useInputMethod
         hotkeyConnected = hotkey.install()
         processNextQueued()
@@ -203,17 +204,35 @@ import VoiceTodoCore
         microphoneAllowed = SpeechService.microphoneAllowed
         hotkeyAllowed = GlobalHotkey.allowed
         inputMethodAllowed = InputMethodBridge.allowed
+        syncDictationShortcut()
         hotkey.useInputMethod = settings.useInputMethod
         let notificationStatus = await notifications.authorization()
         notificationsAllowed = notificationStatus == .authorized || notificationStatus == .provisional
         hotkey.choice = settings.hotkey; hotkeyConnected = hotkey.install()
     }
     func reconcile() { if !demo { Task { await refreshPermissions(); await notifications.reconcile(workspace.tasks) } } }
+    private func syncDictationShortcut() {
+        hotkey.dictationShortcut = settings.dictationShortcut
+        fnSpeech.shortcutLabel = settings.dictationShortcut.label
+        inputMethod.shortcutLabel = settings.dictationShortcut.label
+    }
+    func setDictationShortcut(_ shortcut: DictationShortcut) {
+        guard shortcut.isValid else { return }
+        settings.dictationShortcut = shortcut
+        changedInputMethod()
+    }
+    func beginShortcutRecording() {
+        cancelRecording()
+        hotkey.recordingShortcut = true
+    }
+    func endShortcutRecording() { hotkey.recordingShortcut = false }
+
     func changedHotkey() { hotkey.reset(); hotkey.choice = settings.hotkey }
     func changedInputMethod() {
         hotkey.reset(); inputMethod.cancel(); fnSpeech.cancel()
+        syncDictationShortcut()
         hotkey.useInputMethod = settings.useInputMethod
-        inputMethodStatus = settings.fnLocalSpeech ? "Fn 同时本机识别 · 只在录音期间使用麦克风" : "Fn 后台接收 · 识别到待办后才显示"
+        inputMethodStatus = settings.fnLocalSpeech ? "\(settings.dictationShortcut.label) 同时本机识别 · 只在录音期间使用麦克风" : "\(settings.dictationShortcut.label) 后台接收 · 识别到待办后才显示"
     }
     var awaitingFnReply: Bool { settings.fnLocalSpeech ? fnSpeech.awaitingReply : inputMethod.awaitingReply }
     func requestInputMethod() {

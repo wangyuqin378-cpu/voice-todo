@@ -140,7 +140,7 @@ struct QuestionView: View {
             }
             HStack {
                 Text(state.settings.useInputMethod
-                     ? "用 Fn 说“清单”加上你的回答，例如“清单，明天下午三点”"
+                     ? "用 \(state.settings.dictationShortcut.label) 说“清单”加上你的回答，例如“清单，明天下午三点”"
                      : "按住同一个键回答").font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer()
                 if question.kind == .reminder { Button("不用提醒") { state.submit("不用提醒", answerID: question.id) }.font(.system(size: 11)) }
@@ -227,6 +227,7 @@ struct SettingsView: View {
     @Bindable var settings: AppSettings
     @State private var apiKey = ""
     @State private var changingAI = false
+    @State private var recordingShortcut = false
     @State private var newBaseURL = ""
     @State private var newModel = ""
     @State private var newProtocol: AIProtocol = .automatic
@@ -274,6 +275,12 @@ struct SettingsView: View {
                 }
             }.padding(26)
         }.frame(width: 570, height: 750).tint(accent)
+            .sheet(isPresented: $recordingShortcut, onDismiss: { state.endShortcutRecording() }) {
+                ShortcutRecorderSheet(current: settings.dictationShortcut, save: { shortcut in
+                    state.setDictationShortcut(shortcut); recordingShortcut = false
+                }, cancel: { recordingShortcut = false })
+            }
+            .onDisappear { recordingShortcut = false; state.endShortcutRecording() }
             .task {
                 newBaseURL = settings.baseURL; newModel = settings.model; newProtocol = settings.apiProtocol
                 if !state.demo { await state.refreshPermissions() }
@@ -283,10 +290,18 @@ struct SettingsView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
                 Text("说一句，记下或勾掉").font(.headline)
-                Text(settings.useInputMethod ? "轻按 Fn 开始，再按一次结束；按住说话也可以，松开结束。Esc 取消。" : "轻按\(settings.hotkey.label)开始，再按一次结束；也可以按住说话，松开结束。Esc 取消。")
+                Text(settings.useInputMethod ? "轻按 \(settings.dictationShortcut.label) 开始，再按一次结束；按住说话也可以，松开结束。Esc 取消。" : "轻按\(settings.hotkey.label)开始，再按一次结束；也可以按住说话，松开结束。Esc 取消。")
                     .font(.system(size: 13))
                 Text("普通转写不弹窗、不保存。识别到事项操作后显示结果；未成功的文字可在清单中处理。").font(.system(size: 13)).foregroundStyle(.secondary)
                 if settings.useInputMethod {
+                    HStack {
+                        Text("语音按键：\(settings.dictationShortcut.label)")
+                        Spacer()
+                        Button("录入按键") { state.beginShortcutRecording(); recordingShortcut = true }
+                        if settings.dictationShortcut != .fn {
+                            Button("恢复 Fn") { state.setDictationShortcut(.fn) }
+                        }
+                    }.disabled(state.busy || state.receivingInputMethod)
                     Text("不用固定开头：个人安排、提醒、完成、取消都可自然表达，提醒放在句尾也可以。识别到相关意图才处理，普通聊天保持安静；简单事项直接在本机处理，复杂表达才请 AI 帮忙，无需为每句话等待网络。")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
@@ -296,15 +311,15 @@ struct SettingsView: View {
                 DisclosureGroup("语音入口与诊断") {
                     VStack(alignment: .leading, spacing: 12) {
                         Picker("使用方式", selection: entryMode) {
-                            Text("Fn · 本机识别（推荐）").tag(0)
-                            Text("Fn · 接收输入法文字（试验）").tag(1)
+                            Text("本机识别（推荐）").tag(0)
+                            Text("接收输入法文字（试验）").tag(1)
                             Text("独立录音按键").tag(2)
                         }.disabled(state.busy || state.receivingInputMethod)
                         if !settings.useInputMethod {
                             Picker("录音按键", selection: $settings.hotkey) { ForEach(HotkeyChoice.allCases) { Text($0.label).tag($0) } }
                                 .onChange(of: settings.hotkey) { state.changedHotkey() }
                         }
-                        Text(settings.fnLocalSpeech && settings.useInputMethod ? "Fn 同时启动本机识别，原输入法照常工作；仅本次录音使用麦克风，不读取其他应用文本。" : "接收方式的支持程度取决于输入法和当前输入框。")
+                        Text(settings.fnLocalSpeech && settings.useInputMethod ? "\(settings.dictationShortcut.label) 同时启动本机识别，原输入法照常工作；仅本次录音使用麦克风，不读取其他应用文本。" : "接收方式的支持程度取决于输入法和当前输入框。")
                             .font(.system(size: 12)).foregroundStyle(.secondary)
                         Text(state.inputMethodStatus).font(.system(size: 12)).foregroundStyle(.secondary)
                         Text(state.hotkeyConnected ? "键盘入口已连接" : "键盘入口未连接").font(.system(size: 12))

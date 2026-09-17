@@ -51,6 +51,35 @@ import VoiceTodoCore
 }
 
 @MainActor final class InputMethodBridgeTests: XCTestCase {
+    func testCustomShortcutReceivesFieldCommitAndEscDiscardsNextSession() {
+        let desktop = DictationDesktop()
+        desktop.field(desktop.original); desktop.focus(desktop.original)
+        let bridge = InputMethodBridge(environment: desktop.environment, automaticPolling: false)
+        let key = GlobalHotkey(); key.useInputMethod = true
+        let command = NSEvent.ModifierFlags.command.rawValue
+        key.dictationShortcut = .init(keyCode: 40, modifiers: command, keyLabel: "K")
+        key.onFnPress = { bridge.press() }; key.onFnRelease = { bridge.release() }
+        key.onExternalCancel = { bridge.cancel() }
+        var commands: [String] = []
+        bridge.onCommand = { words, _, _ in commands.append(words) }
+        key.handle(.keyDown, code: 40, flags: command)
+        XCTAssertTrue(bridge.active)
+        desktop.clock = 1; key.handle(.keyUp, code: 40, flags: command)
+        key.handle(.flagsChanged, code: 55, flags: 0)
+        key.handle(.keyDown, code: 9, flags: command)
+        key.handle(.keyUp, code: 9, flags: command)
+        desktop.text(desktop.original, "提醒我明天交材料")
+        bridge.poll(); desktop.clock = 2.3; bridge.poll()
+        XCTAssertEqual(commands, ["提醒我明天交材料"])
+        desktop.field(desktop.original)
+        key.handle(.keyDown, code: 40, flags: command)
+        key.handle(.keyDown, code: 53, flags: command)
+        key.handle(.keyUp, code: 53, flags: command)
+        key.handle(.keyUp, code: 40, flags: command)
+        desktop.text(desktop.original, "材料交好了")
+        bridge.poll(); desktop.clock = 4; bridge.poll()
+        XCTAssertEqual(commands.count, 1); XCTAssertFalse(bridge.active)
+    }
     func testFnModifierChordDropsLateTranscriptionAndNextSessionStillReceives() {
         let desktop = DictationDesktop()
         desktop.field(desktop.original); desktop.focus(desktop.original)

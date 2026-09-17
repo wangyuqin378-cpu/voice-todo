@@ -5,6 +5,7 @@ import VoiceTodoCore
 /// Read-only observation scoped to one Fn session across field and clipboard
 /// delivery. Never read the previous clipboard.
 @MainActor final class InputMethodBridge {
+    var shortcutLabel = "Fn"
     var onCommand: ((String, String, String?) -> Void)?
     var currentQuestionID: (() -> String?)?
     var onStatus: ((String) -> Void)?
@@ -111,8 +112,8 @@ import VoiceTodoCore
         active = true; ended = false; endedAt = nil; secondPress = false; startedAt = now; pressAt = now
         pid = app.pid
         endConversation()
-        if questionID != nil { onStatus?("继续用 Fn 回答刚才的问题，无需再说“清单”。") }
-        else { onStatus?("后台接收本次 Fn · 识别到待办后才显示") }
+        if questionID != nil { onStatus?("继续用 \(shortcutLabel) 回答刚才的问题，无需再说“清单”。") }
+        else { onStatus?("后台接收本次 \(shortcutLabel) · 识别到待办后才显示") }
         onBegin?()
         guard automaticPolling else { return }
         polling = Task { [weak self] in
@@ -129,7 +130,7 @@ import VoiceTodoCore
         trace(.released)
         if secondPress || now - pressAt >= 0.35 {
             ended = true; endedAt = now; capture?.end(at: now); trace(.ended)
-            onStatus?("Fn 已结束 · 等待文字稳定后接收")
+            onStatus?("\(shortcutLabel) 已结束 · 等待文字稳定后接收")
             onFinished?()
         }
         self.pressAt = nil
@@ -208,7 +209,7 @@ import VoiceTodoCore
         case .ignored:
             finish(.ordinaryText, message: "本次是普通转写，未改变清单。")
         case .timedOut:
-            finish(.timedOut, message: "本次 Fn 未收到转写，未改变清单。")
+            finish(.timedOut, message: "本次 \(shortcutLabel) 未收到转写，未改变清单。")
         case .waiting: break
         }
     }

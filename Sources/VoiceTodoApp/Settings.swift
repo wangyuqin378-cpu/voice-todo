@@ -50,6 +50,9 @@ enum HotkeyChoice: String, CaseIterable, Identifiable {
     var model: String { didSet { defaults.set(model, forKey: "ai.model") } }
     var apiProtocol: AIProtocol { didSet { defaults.set(apiProtocol.rawValue, forKey: "ai.protocol") } }
     var hotkey: HotkeyChoice { didSet { defaults.set(hotkey.rawValue, forKey: "hotkey") } }
+    var dictationShortcut: DictationShortcut {
+        didSet { defaults.set(try? JSONEncoder().encode(dictationShortcut), forKey: "inputMethod.shortcut") }
+    }
     var speakQuestions: Bool { didSet { defaults.set(speakQuestions, forKey: "speakQuestions") } }
     var onboardingDone: Bool { didSet { defaults.set(onboardingDone, forKey: "onboardingDone") } }
     var shortcutExperienced: Bool { didSet { defaults.set(shortcutExperienced, forKey: "shortcutExperienced") } }
@@ -64,6 +67,10 @@ enum HotkeyChoice: String, CaseIterable, Identifiable {
         model = defaults.string(forKey: "ai.model") ?? AIConfiguration().model
         apiProtocol = AIProtocol(rawValue: defaults.string(forKey: "ai.protocol") ?? "") ?? .automatic
         hotkey = HotkeyChoice(rawValue: defaults.string(forKey: "hotkey") ?? "") ?? .rightOption
+        if let data = defaults.data(forKey: "inputMethod.shortcut"),
+           let saved = try? JSONDecoder().decode(DictationShortcut.self, from: data), saved.isValid {
+            dictationShortcut = saved
+        } else { dictationShortcut = .fn }
         speakQuestions = defaults.object(forKey: "speakQuestions") as? Bool ?? true
         onboardingDone = defaults.bool(forKey: "onboardingDone")
         shortcutExperienced = defaults.bool(forKey: "shortcutExperienced")

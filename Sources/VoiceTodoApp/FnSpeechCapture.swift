@@ -13,6 +13,7 @@ import VoiceTodoCore
 /// Shares the existing Fn gesture, never consumes keys or reads another app's text.
 /// Only a finalized utterance can become an action. Ordinary speech is discarded.
 @MainActor final class FnSpeechCapture {
+    var shortcutLabel = "Fn"
     enum Phase { case idle, starting, listening, finishing }
     private(set) var phase: Phase = .idle
     var active: Bool { phase != .idle }
@@ -63,7 +64,7 @@ import VoiceTodoCore
         reply = nil
         diagnostics?.start(id: token, source: nil, fieldReadable: false)
         diagnostics?.record(.localSpeechStarted, id: token)
-        onBegin?(); setPhase(.starting); onStatus?("Fn 本机识别 · 正在准备")
+        onBegin?(); setPhase(.starting); onStatus?("\(shortcutLabel) 本机识别 · 正在准备")
         limit = Task { [weak self] in
             try? await Task.sleep(for: .seconds(10))
             guard !Task.isCancelled, let self, self.id == token, !self.ready else { return }
@@ -84,7 +85,7 @@ import VoiceTodoCore
                 self.limit?.cancel()
                 if self.phase == .finishing { self.finalize(token) }
                 else {
-                    self.setPhase(.listening); self.onStatus?("Fn 本机识别 · 正在听")
+                    self.setPhase(.listening); self.onStatus?("\(shortcutLabel) 本机识别 · 正在听")
                     self.limit = Task { [weak self] in
                         try? await Task.sleep(for: .seconds(90))
                         guard !Task.isCancelled, let self, self.id == token else { return }
@@ -109,7 +110,7 @@ import VoiceTodoCore
         diagnostics?.record(.ended, id: id)
         // Stop hardware now, even if model preparation is still in flight.
         speech.stopInput(); setPhase(.finishing)
-        onStatus?("Fn 本机识别 · 录音已结束")
+        onStatus?("\(shortcutLabel) 本机识别 · 录音已结束")
         if ready { finalize(id) }
     }
     func cancel() {
@@ -134,7 +135,7 @@ import VoiceTodoCore
                 self.clear()
                 guard AutomaticCapturePolicy.accepts(words, answering: answer != nil) else {
                     self.diagnostics?.record(words.isEmpty ? .localSpeechEmpty : .ordinaryText, id: token)
-                    self.onStatus?(words.isEmpty ? "Fn 本机识别 · 未听到文字" : "普通转写，未改变清单")
+                    self.onStatus?(words.isEmpty ? "\(shortcutLabel) 本机识别 · 未听到文字" : "普通转写，未改变清单")
                     return
                 }
                 self.lastDeliveredID = token

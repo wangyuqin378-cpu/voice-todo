@@ -101,6 +101,41 @@ import VoiceTodoCore
         XCTAssertFalse(delivered.contains("材料交好了"))
         XCTAssertTrue(speech.text.isEmpty)
     }
+    func testSavedCustomShortcutCreatesCompletesAndRecordingSettingsStaySilent() async throws {
+        let name = "com.wyq.voicetodo.qa." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let flags = NSEvent.ModifierFlags.command.rawValue | NSEvent.ModifierFlags.shift.rawValue
+        AppSettings(defaults: defaults).dictationShortcut = .init(keyCode: 40, modifiers: flags, keyLabel: "K")
+        let settings = AppSettings(defaults: defaults); settings.speakQuestions = false
+        let repository = try Repository(inMemory: true), speech = FakeFnSpeech()
+        var clock = 0.0, keyReads = 0
+        let capture = FnSpeechCapture(speech: speech, now: { clock })
+        let state = try AppState(repository: repository, settings: settings, notifications: FnNotifications(),
+            fnSpeechCapture: capture, aiKeyReader: { keyReads += 1; return "" })
+        state.changedInputMethod()
+        state.beginShortcutRecording()
+        state.hotkey.handle(.keyDown, code: 40, flags: flags)
+        state.hotkey.handle(.keyUp, code: 40, flags: flags)
+        XCTAssertFalse(capture.active)
+        state.endShortcutRecording()
+        for words in ["提醒我明天下午三点交材料", "材料交好了"] {
+            state.hotkey.handle(.keyDown, code: 40, flags: flags)
+            try await settle { capture.phase == .listening }
+            XCTAssertTrue(state.inputMethodStatus.contains(settings.dictationShortcut.label))
+            speech.text = words; clock += 1
+            state.hotkey.handle(.keyUp, code: 40, flags: flags)
+            try await settle { !capture.active && !state.busy }
+            clock += 1
+        }
+        let tasks = try repository.load().tasks
+        XCTAssertEqual(tasks.count, 1); XCTAssertTrue(try XCTUnwrap(tasks.first).isCompleted)
+        XCTAssertEqual(keyReads, 0)
+        state.setDictationShortcut(.fn)
+        XCTAssertEqual(AppSettings(defaults: defaults).dictationShortcut, .fn)
+        state.hotkey.handle(.keyDown, code: 40, flags: flags)
+        XCTAssertFalse(capture.active)
+    }
     func testFnModifierChordCannotSavePartialTaskAndNextNormalPressWorks() async throws {
         let name = "com.wyq.voicetodo.qa." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))

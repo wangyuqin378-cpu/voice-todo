@@ -6,7 +6,7 @@
 
 A small macOS menu-bar app for turning spoken Chinese into to-dos—and marking them done by speaking again. It keeps a local list, understands dates, sets one-time reminders when requested, and lets you undo an action.
 
-**Current source version: 0.1.1 / build34, in development.** macOS 26 only; Windows and Linux clients are not available yet, and there is no notarized download. Receiving transcripts from other voice tools is experimental.
+**Current source version: 0.1.1 / build35, in development.** macOS 26 only; Windows and Linux clients are not available yet, and there is no notarized download. Receiving transcripts from other voice tools is experimental.
 
 <img src="assets/readme/hero-en.svg" width="100%" alt="随口清单: say a task to add it, then say it is done to complete it. Workflow illustration, not an app screenshot.">
 
@@ -42,12 +42,12 @@ These are example commands, not a claim that every voice setup passes. Text-to-a
 
 Remembering a task often happens while doing something else. Opening another app, finding a form and organizing the entry can interrupt that moment. Finishing a task should be just as easy to record as creating it.
 
-The aim is to attach this small workflow to a voice-input habit you already have: say what needs doing, then say when it is done. The default Fn mode uses the app's own local speech recognition. Direct transcript reception from tools such as Typeless remains an experiment, with no official integration or compatibility certification.
+The aim is to attach this small workflow to a voice-input habit you already have: say what needs doing, then say when it is done. The default key is Fn; Settings → 录入按键 can match your existing voice shortcut. The local recognition mode uses the app's own local speech recognition. Direct transcript reception from tools such as Typeless remains an experiment, with no official integration or compatibility certification.
 
 Simple tasks run locally; only unresolved wording needs AI. Build33 checks for hypothetical plans and requests for advice: “如果我想住两天水屋呢，再帮我安排一下” stays quiet, while “我明天入住酒店” can still become a task. Both capture and mutation validation inspect the whole utterance so a model cannot save a fragment stripped of its condition. Claude Messages and OpenAI-compatible Chat Completions remain supported, without requiring a Flash model or a fixed opening phrase. AI does not guarantee perfect accuracy.
 
-Build34 prevents Fn chords from submitting partial dictation. Adding another modifier cancels that capture regardless of release order; the next standalone Fn press still works.
+Build35 adds a shortcut recorder in Settings. Keep Fn or record the key / modifier combination used by your voice tool; the binding is shared by local recognition and experimental transcript reception. Recording settings pauses capture, and Esc cancels. System-reserved shortcuts and third-party compatibility still need device checks.
 
-[Product direction](docs/PRODUCT.md) · [Validation and remaining device checks](docs/REVIEW-BUILD34.md) · [Report an issue](https://github.com/wangyuqin378-cpu/voice-todo/issues)
+[Product direction](docs/PRODUCT.md) · [Validation and remaining device checks](docs/REVIEW-BUILD35.md) · [Report an issue](https://github.com/wangyuqin378-cpu/voice-todo/issues)
 
 **License:** source is public; an open-source license has not been specified.

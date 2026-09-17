@@ -4,6 +4,12 @@ import VoiceTodoCore
 @MainActor final class GlobalHotkey {
     var choice: HotkeyChoice = .rightOption
     var useInputMethod = false
+    var dictationShortcut: DictationShortcut = .fn {
+        didSet { if oldValue != dictationShortcut { reset(clearHeldKeys: true) } }
+    }
+    var recordingShortcut = false {
+        didSet { if oldValue != recordingShortcut { reset(clearHeldKeys: true) } }
+    }
     var onFnPress: (() -> Void)?
     var onFnRelease: (() -> Void)?
     var onExternalCancel: (() -> Void)?
@@ -27,6 +33,7 @@ import VoiceTodoCore
     private var pressedAt: TimeInterval?
     private var fnPressed = false
     private var fnBlocked = false
+    private var customGesture = DictationShortcutGesture()
     // Only retain currently held virtual keys; never collect typed text or a key history.
     private var heldKeys: Set<UInt16> = []
     // Only opaque, process-randomized event fingerprints are retained briefly.
@@ -49,7 +56,7 @@ import VoiceTodoCore
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     let type: CGEventType = event.type == .flagsChanged ? .flagsChanged : (event.type == .keyDown ? .keyDown : .keyUp)
-                    self.receive(type, code: event.keyCode, flags: event.modifierFlags.rawValue, timestamp: event.timestamp, source: .localMonitor)
+                    self.receive(type, code: event.keyCode, flags: event.modifierFlags.rawValue, timestamp: event.timestamp, source: .localMonitor, isRepeat: event.type == .keyDown && event.isARepeat)
                 }
                 return event
             }
@@ -67,16 +74,17 @@ import VoiceTodoCore
                 let code = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
                 let flags = UInt(event.flags.rawValue)
                 let timestamp = TimeInterval(event.timestamp) / 1_000_000_000
+                let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
                 // Return from the tap before querying another app's accessibility
                 // tree. AX IPC inside this callback can stall the input event itself.
                 DispatchQueue.main.async { [weak service] in
                     guard let service else { return }
                     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                         service.reset(clearHeldKeys: true)
-                        service.onDiagnostic?("按键监听已恢复，请重新按一次 Fn。")
+                        service.onDiagnostic?("按键监听已恢复，请重新按一次语音键。")
                         if let tap = service.tap { CGEvent.tapEnable(tap: tap, enable: true) }
                         service.onConnection?(service.tap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false)
-                    } else { service.receive(type, code: code, flags: flags, timestamp: timestamp) }
+                    } else { service.receive(type, code: code, flags: flags, timestamp: timestamp, isRepeat: isRepeat) }
                 }
             }
             return Unmanaged.passUnretained(event)
@@ -105,6 +113,7 @@ import VoiceTodoCore
     func reset(clearHeldKeys: Bool = false) {
         onExternalCancel?()
         fnPressed = false; fnBlocked = false
+        customGesture = DictationShortcutGesture()
         delayed?.cancel(); delayed = nil
         perform(gesture.reset()); ownsHoldRecording = false; pressedAt = nil
         if clearHeldKeys { heldKeys.removeAll() }
@@ -112,7 +121,7 @@ import VoiceTodoCore
     // Physical/input-method and synthesized events can carry different clock
     // values. A lower timestamp is not proof that an input is stale. Reject only
     // a recently seen event identity, including delayed copies from either source.
-    func receive(_ type: CGEventType, code: UInt16, flags: UInt, timestamp: TimeInterval, source: HotkeyDiagnostics.Source = .eventTap) {
+    func receive(_ type: CGEventType, code: UInt16, flags: UInt, timestamp: TimeInterval, source: HotkeyDiagnostics.Source = .eventTap, isRepeat: Bool = false) {
         let fnDown: Bool? = type == .flagsChanged && code == 63 ? flags & NSEvent.ModifierFlags.function.rawValue != 0 : nil
         let receivedAt = ProcessInfo.processInfo.systemUptime
         let aheadBy = timestamp - receivedAt
@@ -121,7 +130,7 @@ import VoiceTodoCore
             var hasher = Hasher()
             // Tolerate sub-microsecond conversion noise between CGEvent/NSEvent.
             hasher.combine((timestamp * 1_000_000).rounded())
-            hasher.combine(type.rawValue); hasher.combine(code); hasher.combine(flags)
+            hasher.combine(type.rawValue); hasher.combine(code); hasher.combine(flags); hasher.combine(isRepeat)
             let id = hasher.finalize()
             guard !recentEventIDs.contains(where: { $0.id == id }) else {
                 onReceipt?(source, .duplicate, fnDown, aheadBy); return
@@ -130,11 +139,27 @@ import VoiceTodoCore
             if recentEventIDs.count > 256 { recentEventIDs.removeFirst(recentEventIDs.count - 256) }
         }
         onReceipt?(source, .accepted, fnDown, aheadBy)
-        handle(type, code: code, flags: flags)
+        handle(type, code: code, flags: flags, isRepeat: isRepeat)
     }
     // Internal so the same event path can be exercised without posting system key events.
-    func handle(_ type: CGEventType, code: UInt16, flags: UInt) {
+    func handle(_ type: CGEventType, code: UInt16, flags: UInt, isRepeat: Bool = false) {
+        guard !recordingShortcut else { return }
         if useInputMethod {
+            if dictationShortcut != .fn {
+                let effect = customGesture.handle(type, code: code, flags: flags, shortcut: dictationShortcut, isRepeat: isRepeat)
+                switch effect {
+                case .press: onDetected?(); onDiagnostic?("已按下 \(dictationShortcut.label)"); onFnPress?()
+                case .release: onDiagnostic?("已松开 \(dictationShortcut.label)"); onFnRelease?()
+                case .cancel: onDiagnostic?("本次语音接收已取消。"); onExternalCancel?()
+                case .none: break
+                }
+                if type == .keyDown, code == 53 { onCancel?() }
+                // Copy is a deliberate user action unless it is the configured
+                // dictation shortcut itself. Synthetic paste commits stay allowed.
+                if effect == .none, type == .keyDown, code != dictationShortcut.keyCode,
+                   flags & NSEvent.ModifierFlags.command.rawValue != 0, code == 8 || code == 7 { onManualCopy?() }
+                return
+            }
             if type == .keyDown, flags & NSEvent.ModifierFlags.command.rawValue != 0, code == 8 || code == 7 {
                 onManualCopy?()
             }
