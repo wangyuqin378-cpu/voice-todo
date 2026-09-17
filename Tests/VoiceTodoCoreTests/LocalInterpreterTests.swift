@@ -72,16 +72,14 @@ final class LocalInterpreterTests: XCTestCase {
 }
 
 final class TranscriptionCaptureTests: XCTestCase {
-    func testReplyStillNeedsOpeningAddressEvenWithConversationContext() throws {
+    func testReplyNeedsConversationContextButNoOpeningAddress() throws {
         var normal = try XCTUnwrap(TranscriptionCapture(baseline: "", selection: NSRange(location: 0, length: 0)))
         normal.end(at: 1); normal.observe("明天下午三点", at: 2)
         XCTAssertNil(normal.ready(at: 4))
         var reply = try XCTUnwrap(TranscriptionCapture(baseline: "", selection: NSRange(location: 0, length: 0), questionID: "q"))
         reply.end(at: 1); reply.observe("明天下午三点", at: 2)
         XCTAssertNil(reply.ready(at: 3))
-        XCTAssertNil(reply.ready(at: 4))
-        reply.observe("清单，明天下午三点", at: 5)
-        XCTAssertEqual(reply.ready(at: 7), "清单，明天下午三点")
+        XCTAssertEqual(reply.ready(at: 4), "明天下午三点")
         XCTAssertEqual(reply.questionID, "q")
         XCTAssertNil(reply.ready(at: 8))
     }

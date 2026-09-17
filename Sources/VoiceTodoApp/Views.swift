@@ -79,7 +79,7 @@ struct MainView: View {
             Image(systemName: completed ? "checkmark.circle" : "waveform").font(.system(size: 32, weight: .light)).foregroundStyle(accent)
             Text(search.isEmpty ? (completed ? "做完的事，会留在这里。" : "把惦记的事，说出来。") : "没有找到这件事").font(.system(size: 15, weight: .medium))
             if search.isEmpty && !completed {
-                Text(state.settings.useInputMethod ? "用 Fn 说“提醒我明天下午三点面试”，或“帮我记录一下，明天交材料”。\n做完说“清单，面试完成了”；口令必须在开头。" : "轻按\(state.settings.hotkey.label)开始，再按结束。\n也可以按住说话，松开结束。")
+                Text(state.settings.useInputMethod ? "用语音输入说“明天下午三点面试，提醒我一下”。\n做完说“面试完成了”，无需固定开头。" : "轻按\(state.settings.hotkey.label)开始，再按结束。\n也可以按住说话，松开结束。")
                     .multilineTextAlignment(.center).font(.system(size: 13)).foregroundStyle(.secondary)
             }
         }.frame(maxWidth: .infinity).padding(.vertical, 40)
@@ -87,7 +87,7 @@ struct MainView: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
             if state.settings.useInputMethod {
-                Text("Fn 语音：开头说“提醒我…”或“帮我记录一下…”。完成、取消和回答说“清单，…”。")
+                Text("自然说安排、提醒或完成，例如“明天有个面试”“材料交好了”，无需固定开头。")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             if let id = state.editingCaptureID, let capture = state.pending.first(where: { $0.id == id }) {
@@ -150,6 +150,7 @@ struct EditView: View {
     @State var item: TodoItem
     let isNew: Bool
     var state: AppState
+    var sourceText: String? = nil
     var save: (TodoItem) -> Bool
     @State private var wantsReminder = false
     @State private var date = Date.now.addingTimeInterval(3600)
@@ -169,6 +170,12 @@ struct EditView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text(isNew ? "添加一件事" : "修改这件事").font(.title3.bold())
+            if let sourceText {
+                Text("参考原话，手动填写一件事。原记录仍会保留，整理完后可忽略；完成或取消请直接在清单操作。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                ScrollView { Text(sourceText).font(.system(size: 13)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                    .frame(maxHeight: 90)
+            }
             TextField("任务名称", text: $item.title).textFieldStyle(.roundedBorder)
             if !item.isCompleted {
                 Toggle("事项日期", isOn: $hasPlannedDate)
@@ -275,7 +282,7 @@ struct SettingsView: View {
                     .font(.system(size: 13))
                 Text("普通转写不弹窗、不保存。识别到事项操作后显示结果；未成功的文字可在清单中处理。").font(.system(size: 13)).foregroundStyle(.secondary)
                 if settings.useInputMethod {
-                    Text("固定开头口令：新增说“提醒我…”或“帮我记录一下…”；完成、取消、撤销和回答追问说“清单，…”。出现在句中或句尾不触发，未命中不保存、不发给 AI。")
+                    Text("不用固定开头：个人安排、提醒、完成、取消都可自然表达，提醒放在句尾也可以。识别到相关意图才处理，普通聊天保持安静；有 Key 优先 AI，无 Key 使用本机规则。")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Text("同名事项也会新增。已有事项的时间和提醒请在清单中手动编辑；语音完成需名称完整对应且唯一匹配。").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -330,9 +337,9 @@ struct SettingsView: View {
     private var aiSettings: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
-                Text("复杂表达使用 AI").font(.headline)
-                Text("明确的创建、完成、取消优先在本机处理，无需等待 AI。").font(.system(size: 13)).foregroundStyle(.secondary)
-                Text("需要 AI 时，本次文字和清单中的事项名称、日期及完成状态会发送给你配置的服务；原始录音不会上传。").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("AI 增强（可选）").font(.headline)
+                Text("不填 API Key 也能创建、完成、取消和提醒。无法自动理解的原话会保留，可修改或手动整理。").font(.system(size: 13)).foregroundStyle(.secondary)
+                Text("配置 Key 后优先用 AI 理解。本次文字和清单中的事项名称、日期及完成状态会发送给你配置的服务；原始录音不会上传。").font(.system(size: 12)).foregroundStyle(.secondary)
                 Text("当前模型：\(settings.model)").font(.system(size: 13))
                 if AIKey.hasLocalReference {
                     Text("使用本机已有配置，无需再次填写 API Key。").font(.system(size: 13)).foregroundStyle(.secondary)

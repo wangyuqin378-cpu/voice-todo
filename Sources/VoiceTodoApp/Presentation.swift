@@ -24,6 +24,13 @@ enum TaskPresentation {
 }
 
 enum CaptureRecovery {
+    static func explanation(_ issue: String) -> String {
+        if issue.contains("请先在设置中填写 AI API Key") {
+            return "旧版曾因未配置 AI 停止处理。现在无需 Key，可重试原话、修改文字或手动整理。"
+        }
+        return issue
+    }
+
     static func issue(questionID: String?, context: CaptureContext?, workspace: Workspace) -> String? {
         guard let questionID else { return nil }
         guard let question = workspace.questions.first(where: { $0.id == questionID }) else {
@@ -65,7 +72,7 @@ extension AppState {
         }
         if !pending.isEmpty { return .init(title: "有 \(pending.count) 条未处理", symbol: "exclamationmark.bubble", needsAttention: true) }
         if question != nil { return .init(title: "有问题待补充 · 打开清单继续", symbol: "bubble.left.and.bubble.right") }
-        return .init(title: settings.useInputMethod ? "Fn · 开头说“提醒我”或“帮我记录一下”" : "\(settings.hotkey.label)说一句 · 再按结束", symbol: "checkmark.bubble")
+        return .init(title: settings.useInputMethod ? "语音记下安排 · 说完成即可勾选" : "\(settings.hotkey.label)说一句 · 再按结束", symbol: "checkmark.bubble")
     }
 
     func recoveryIssue(_ capture: InputCapture) -> String? {

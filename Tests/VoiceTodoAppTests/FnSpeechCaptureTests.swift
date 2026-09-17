@@ -55,7 +55,7 @@ import VoiceTodoCore
         try repository.save(.init(tasks: [old]))
         let speech = FakeFnSpeech(); var time = 0.0
         let capture = FnSpeechCapture(speech: speech, now: { time })
-        let state = try AppState(repository: repository, settings: settings, notifications: notifications, fnSpeechCapture: capture)
+        let state = try AppState(repository: repository, settings: settings, notifications: notifications, fnSpeechCapture: capture, aiKeyReader: { "" })
         state.hotkey.useInputMethod = true
         func say(_ input: String) async throws {
             let before = speech.starts
@@ -147,7 +147,7 @@ import VoiceTodoCore
         let repository = try Repository(inMemory: true), notifications = FnNotifications()
         let speech = FakeFnSpeech(); var time = 0.0
         let capture = FnSpeechCapture(speech: speech, now: { time })
-        let state = try AppState(repository: repository, settings: settings, notifications: notifications, fnSpeechCapture: capture)
+        let state = try AppState(repository: repository, settings: settings, notifications: notifications, fnSpeechCapture: capture, aiKeyReader: { "" })
         var popups = 0, legacyBegins = 0
         state.showOverlay = { popups += 1 }
         state.inputMethod.onBegin = { legacyBegins += 1 }
@@ -171,23 +171,21 @@ import VoiceTodoCore
             XCTAssertTrue(state.errorMessage.isEmpty, state.errorMessage)
             time += 1
         }
-        for text in ["今天天气真好，我们聊点别的", "优化公开项目介绍", "新增公开项目水口清单（PC端产品，主推）", "土地", "我10月1号要买车票，提醒我一下"] {
+        for text in ["今天天气真好，我们聊点别的", "优化公开项目介绍", "新增公开项目水口清单（PC端产品，主推）", "土地", "新增一个按钮"] {
             try await say(text)
         }
         XCTAssertEqual(popups, 0); XCTAssertTrue(try repository.pending().isEmpty)
         try await say("提醒我报销")
         XCTAssertEqual(state.workspace.tasks.count, 1); XCTAssertTrue(state.awaitingFnReply)
         let questionBefore = state.workspace.questions.first
-        try await say("新增一个按钮")
-        try await say("明天下午六点")
         XCTAssertEqual(state.workspace.questions.first, questionBefore)
         XCTAssertEqual(state.workspace.tasks.count, 1)
         XCTAssertNil(state.workspace.tasks.first?.reminderAt)
-        try await say("清单，明天下午六点")
+        try await say("明天下午六点")
         XCTAssertTrue(state.workspace.questions.isEmpty)
         let reminder = try XCTUnwrap(state.workspace.tasks.first?.reminderAt)
         XCTAssertEqual(Calendar.current.component(.hour, from: reminder), 18)
-        try await say("清单，报销好了")
+        try await say("报销好了")
         XCTAssertEqual(state.workspace.tasks.count, 1)
         XCTAssertTrue(try XCTUnwrap(state.workspace.tasks.first).isCompleted)
         XCTAssertTrue(ReminderPlanner.plans(tasks: state.workspace.tasks, delivered: [], scheduled: [], now: .now).isEmpty)
@@ -264,7 +262,7 @@ import VoiceTodoCore
         var popups = 0
         state.showOverlay = { popups += 1 }
         subject.currentQuestionID = { "pending-question" }
-        for (index, words) in ["新增公开项目介绍", "面试完成了", "明天下午三点"].enumerated() {
+        for (index, words) in ["新增公开项目介绍", "今天天气真好", "土地"].enumerated() {
             subject.press(); try await settle { speech.starts == index + 1 }
             speech.text = words; speech.onFailure?("识别中断")
             XCTAssertFalse(subject.active)

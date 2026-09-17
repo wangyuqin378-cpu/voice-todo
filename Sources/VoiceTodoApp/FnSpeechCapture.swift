@@ -132,7 +132,7 @@ import VoiceTodoCore
                 let answer = self.answerID
                 self.diagnostics?.record(.localSpeechFinal, id: token)
                 self.clear()
-                guard AutomaticCapturePolicy.accepts(words) else {
+                guard AutomaticCapturePolicy.accepts(words, answering: answer != nil) else {
                     self.diagnostics?.record(words.isEmpty ? .localSpeechEmpty : .ordinaryText, id: token)
                     self.onStatus?(words.isEmpty ? "Fn 本机识别 · 未听到文字" : "普通转写，未改变清单")
                     return
@@ -152,6 +152,6 @@ import VoiceTodoCore
         diagnostics?.record(.localSpeechFailed, id: token)
         clear(); onStatus?(message)
         // An incomplete completion must never be applied. Ordinary speech stays transient.
-        onFailure?(AutomaticCapturePolicy.accepts(words) ? words : "", token, message, answer)
+        onFailure?(AutomaticCapturePolicy.accepts(words, answering: answer != nil) ? words : "", token, message, answer)
     }
 }

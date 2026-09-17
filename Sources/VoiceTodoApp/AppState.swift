@@ -20,7 +20,7 @@ import VoiceTodoCore
     var hotkeyAllowed = GlobalHotkey.allowed
     var hotkeyConnected = false
     var inputMethodAllowed = InputMethodBridge.allowed
-    var inputMethodStatus = "Fn 后台接收 · 只处理开头口令"
+    var inputMethodStatus = "Fn 后台接收 · 自然表达识别事项"
     var receivingInputMethod = false
     var inputMethodFinishing = false
     var fnStarting = false
@@ -45,6 +45,8 @@ import VoiceTodoCore
     @ObservationIgnored let inputMethod = InputMethodBridge()
     @ObservationIgnored let fnSpeech: FnSpeechCapture
     @ObservationIgnored let notifications: any TaskNotifications
+    @ObservationIgnored private let aiKeyReader: (() throws -> String)?
+    @ObservationIgnored private let aiInterpreter: (any AIInterpreting)?
     @ObservationIgnored var showOverlay: (() -> Void)?
     @ObservationIgnored var hideOverlay: (() -> Void)?
     @ObservationIgnored var openList: (() -> Void)?
@@ -59,8 +61,10 @@ import VoiceTodoCore
     var overlayQuestion: FollowUp? { workspace.questions.first { $0.id == overlayQuestionID } }
     var busy: Bool { phase != .idle }
 
-    init(repository: Repository, settings: AppSettings, demo: Bool = false, notifications: (any TaskNotifications)? = nil, captureDiagnostics: CaptureDiagnostics? = nil, hotkeyDiagnostics: HotkeyDiagnostics? = nil, fnSpeechCapture: FnSpeechCapture? = nil) throws {
+    init(repository: Repository, settings: AppSettings, demo: Bool = false, notifications: (any TaskNotifications)? = nil, captureDiagnostics: CaptureDiagnostics? = nil, hotkeyDiagnostics: HotkeyDiagnostics? = nil, fnSpeechCapture: FnSpeechCapture? = nil, aiKeyReader: (() throws -> String)? = nil, aiInterpreter: (any AIInterpreting)? = nil) throws {
         self.repository = repository; self.settings = settings; self.demo = demo
+        self.aiKeyReader = aiKeyReader
+        self.aiInterpreter = aiInterpreter
         self.notifications = notifications ?? NotificationService()
         inputMethod.diagnostics = captureDiagnostics
         fnSpeech = fnSpeechCapture ?? FnSpeechCapture()
@@ -158,15 +162,15 @@ import VoiceTodoCore
         fnSpeech.onStatus = { [weak self] text in
             self?.inputMethodStatus = text
             if text.contains("未听到文字") { self?.lastVoiceOutcome = "本次未听到文字 · 可再说一次" }
-            else if text.contains("普通转写") { self?.lastVoiceOutcome = "开头没有清单口令 · 未保存" }
+            else if text.contains("普通转写") { self?.lastVoiceOutcome = "未识别到事项意图 · 未保存" }
         }
         fnSpeech.onCommand = { [weak self] text, id, questionID in self?.enqueueExternal(text, id: id, answerID: questionID) }
         fnSpeech.onFailure = { [weak self] text, id, message, questionID in
             guard let self else { return }
             self.lastVoiceOutcome = message
-            // Background dictation without an explicit opening stays quiet,
+            // Background dictation without task relevance stays quiet,
             // including partial speech interrupted before recognition finishes.
-            guard AutomaticCapturePolicy.accepts(text) else { return }
+            guard AutomaticCapturePolicy.accepts(text, answering: self.workspace.questions.contains { $0.id == questionID }) else { return }
             do {
                 let capture = try self.repository.capture(text, questionID: questionID, id: "external-" + id)
                 try self.repository.fail(capture, message: message)
@@ -181,7 +185,7 @@ import VoiceTodoCore
 
     func activate() {
         guard !demo else { return }
-        if settings.fnLocalSpeech { inputMethodStatus = "Fn 本机识别 · 只处理开头口令" }
+        if settings.fnLocalSpeech { inputMethodStatus = "Fn 本机识别 · 自然表达识别事项" }
         hotkey.choice = settings.hotkey
         hotkey.useInputMethod = settings.useInputMethod
         hotkeyConnected = hotkey.install()
@@ -326,7 +330,7 @@ import VoiceTodoCore
     }
     func retry(_ capture: InputCapture) { guard !busy else { return }; process(capture, explicitlySubmitted: true) }
     func enqueueExternal(_ text: String, id: String, answerID: String? = nil) {
-        guard !demo, AutomaticCapturePolicy.accepts(text) else { return }
+        guard !demo, AutomaticCapturePolicy.accepts(text, answering: workspace.questions.contains { $0.id == answerID }) else { return }
         do {
             let addressedAnswer = NaturalTaskIntent.addressed(text) ? (overlayQuestion?.id ?? question?.id) : nil
             _ = try repository.capture(text, questionID: answerID ?? addressedAnswer, id: "external-" + id, queued: true)
@@ -374,10 +378,9 @@ import VoiceTodoCore
         processingTask = Task {
             defer { processNextQueued() }
             do {
-                // An old queued capture must not run after upgrading to strict
-                // reception. Opening a record and explicitly retrying is manual input.
-                if external && !explicitlySubmitted && !AutomaticCapturePolicy.accepts(capture.text) {
-                    throw UserFacingError("旧版自动接收的文字没有开头口令，已停止处理。请核对后手动重试或忽略。")
+                // Old queued ordinary text remains reviewable, never silently imported.
+                if external && !explicitlySubmitted && !AutomaticCapturePolicy.accepts(capture.text, answering: currentQuestion != nil) {
+                    throw UserFacingError("这条旧记录未识别到事项意图，已保留。请核对后手动重试或忽略。")
                 }
                 var proposal: Proposal
                 let inputContext = try repository.captureContext(for: capture)
@@ -387,19 +390,41 @@ import VoiceTodoCore
                 if currentQuestion == nil, CaptureRecovery.isUnboundReply(capture.text) {
                     throw UserFacingError("这句话没有对应的问题，请补充完整的事项和操作。")
                 }
-                if let local = LocalInterpreter.interpret(capture.text, workspace: snapshot, question: currentQuestion,
-                                                          now: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone,
-                                                          defaultReminderHour: settings.defaultReminderHour,
-                        defaultReminderLeadMinutes: settings.defaultReminderLeadMinutes) {
-                    proposal = local
-                } else {
-                    let key = try AIKey.read(configuration: settings.configuration, defaults: settings.defaults)
-                    proposal = try await AIClient(configuration: settings.configuration).interpret(
-                        input: capture.text, workspace: snapshot, question: currentQuestion, key: key,
+                // A configured model gets first interpretation, including simple
+                // phrases. Missing keys, service errors or invalid proposals fall
+                // back to deterministic paths without blocking basic task use.
+                var understood: Proposal? = snapshot.appliedInputs.contains(capture.id) ? Proposal(actions: [.init(kind: .noop)]) : nil
+                let key = (try? aiKeyReader.map { try $0() }
+                    ?? AIKey.read(configuration: settings.configuration, defaults: settings.defaults)) ?? ""
+                if understood == nil, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    do {
+                        let candidate = try await (aiInterpreter ?? AIClient(configuration: settings.configuration)).interpret(
+                            input: capture.text, workspace: snapshot, question: currentQuestion, key: key,
+                            now: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone,
+                            defaultReminderHour: settings.defaultReminderHour,
+                            defaultReminderLeadMinutes: settings.defaultReminderLeadMinutes)
+                        let adjusted = ReminderTiming.apply(to: candidate, input: capture.text, now: .now,
+                            leadMinutes: settings.defaultReminderLeadMinutes)
+                        _ = try TaskReducer.apply(adjusted, to: snapshot, inputID: capture.id,
+                            input: capture.text, answering: capture.questionID,
+                            inputDate: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone)
+                        understood = adjusted
+                    } catch is CancellationError { throw CancellationError() }
+                    catch { /* The original text still has a local/manual path. */ }
+                }
+                if understood == nil {
+                    understood = LocalInterpreter.interpret(capture.text, workspace: snapshot, question: currentQuestion,
                         now: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone,
                         defaultReminderHour: settings.defaultReminderHour,
                         defaultReminderLeadMinutes: settings.defaultReminderLeadMinutes)
+                        ?? OfflineInterpreter.interpret(capture.text, workspace: snapshot, question: currentQuestion,
+                            now: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone,
+                            defaultReminderHour: settings.defaultReminderHour,
+                            defaultReminderLeadMinutes: settings.defaultReminderLeadMinutes,
+                            allowPlainCreation: !external || explicitlySubmitted)
                 }
+                guard let understood else { throw UserFacingError(OfflineInterpreter.recoveryMessage) }
+                proposal = understood
                 try Task.checkCancellation()
                 // Rebase an immediate lead alarm after network/recognition latency.
                 // Relative dates themselves remain anchored to the original capture.
@@ -425,7 +450,7 @@ import VoiceTodoCore
                 }
                 await notifications.reconcile(workspace.tasks)
                 if feedback, !receivingInputMethod, let question = overlayQuestion, settings.speakQuestions {
-                    speaker.speak(question.question + (settings.useInputMethod ? " 请先说清单，再回答。" : ""))
+                    speaker.speak(question.question + (settings.useInputMethod ? " 可以直接回答。" : ""))
                 }
             } catch {
                 if external { inputMethod.diagnostics?.record(.processingFailed, id: traceID) }
@@ -434,7 +459,7 @@ import VoiceTodoCore
                 catch { errorMessage = "保存处理状态失败，原文：\(capture.text)" }
                 if errorMessage.isEmpty { errorMessage = issue }
                 phase = .idle
-                if !external || explicitlySubmitted || AutomaticCapturePolicy.accepts(capture.text) { showOverlay?() }
+                if !external || explicitlySubmitted || AutomaticCapturePolicy.accepts(capture.text, answering: currentQuestion != nil) { showOverlay?() }
             }
         }
     }
@@ -503,7 +528,7 @@ import VoiceTodoCore
             try reloadPending(); errorMessage = ""
             message = result.messages.joined(separator: "\n"); speaker.stop(); reconcile(); showOverlay?()
             if let question = self.question, settings.speakQuestions {
-                speaker.speak(question.question + (settings.useInputMethod ? " 请先说清单，再回答。" : ""))
+                speaker.speak(question.question + (settings.useInputMethod ? " 可以直接回答。" : ""))
             }
         } catch {
             errorMessage = friendly(error)

@@ -71,6 +71,7 @@ struct RecentActivityView: View {
 struct PendingRecoveryView: View {
     @Environment(\.dismiss) private var dismiss
     var state: AppState
+    @State private var manualSource: InputCapture?
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -92,6 +93,10 @@ struct PendingRecoveryView: View {
             }
             if !state.errorMessage.isEmpty { Text(state.errorMessage).font(.system(size: 12)).foregroundStyle(.red).lineLimit(3) }
         }.padding(24).frame(width: 560, height: 560).tint(ink)
+            .sheet(item: $manualSource) { capture in
+                EditView(item: TodoItem(title: "", originalInput: capture.text), isNew: true,
+                         state: state, sourceText: capture.text) { state.edit($0, message: "已手动添加") }
+            }
     }
     private func recoveryCard(_ capture: InputCapture) -> some View {
         let context = state.captureContexts[capture.id]
@@ -112,12 +117,13 @@ struct PendingRecoveryView: View {
             if let context, context.originalText != capture.text {
                 DisclosureGroup("修改前的原话") { Text(context.originalText).font(.system(size: 12)).textSelection(.enabled) }
             }
-            if !capture.issue.isEmpty { Text(capture.issue).font(.system(size: 13)).foregroundStyle(.secondary) }
+            if !capture.issue.isEmpty { Text(CaptureRecovery.explanation(capture.issue)).font(.system(size: 13)).foregroundStyle(.secondary) }
             if let problem { Label(problem, systemImage: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(.orange) }
             Text("直接重试沿用说话当天的日期；修改后按这次提交的日期理解。").font(.system(size: 12)).foregroundStyle(.secondary)
             HStack {
                 Button("重试原话") { state.retry(capture) }.disabled(problem != nil)
                 Button(problem == nil ? "修改文字" : "改为完整指令") { state.editCapture(capture) }
+                Button("手动添加事项") { state.errorMessage = ""; manualSource = capture }
                 Spacer()
                 Button("忽略此记录") { state.dismissCapture(capture) }
             }.disabled(state.busy)

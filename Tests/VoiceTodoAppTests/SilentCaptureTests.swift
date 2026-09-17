@@ -20,7 +20,7 @@ import VoiceTodoCore
         let settings = AppSettings(defaults: defaults); settings.speakQuestions = false
         let alerts = QuietNotifications()
         let repository = try Repository(inMemory: true)
-        let state = try AppState(repository: repository, settings: settings, notifications: alerts)
+        let state = try AppState(repository: repository, settings: settings, notifications: alerts, aiKeyReader: { "" })
         var shown = 0, processingPopups = 0
         state.showOverlay = { shown += 1; if state.phase == .processing { processingPopups += 1 } }
         state.hideOverlay = {}
@@ -35,8 +35,7 @@ import VoiceTodoCore
         XCTAssertTrue(state.workspace.tasks.isEmpty)
 
         for (index, text) in ["优化公开项目介绍", "根据GitHub最新内容整体更新GitHub主页",
-                              "新增公开项目水口清单（PC端产品，主推）", "土地",
-                              "我明天下午三点面试，提醒我一下", "面试完成了", "帮我安排明天面试"].enumerated() {
+                              "新增公开项目水口清单（PC端产品，主推）", "土地"].enumerated() {
             state.enqueueExternal(text, id: "ordinary-\(index)", answerID: "untrusted-answer")
         }
         XCTAssertTrue(try repository.pending().isEmpty)
@@ -68,18 +67,18 @@ import VoiceTodoCore
         let settings = AppSettings(defaults: defaults); settings.speakQuestions = false
         let repository = try Repository(inMemory: true)
         let legacy = try repository.capture("新增公开项目介绍", questionID: nil, id: "external-legacy", queued: true)
-        let state = try AppState(repository: repository, settings: settings, notifications: QuietNotifications())
+        let state = try AppState(repository: repository, settings: settings, notifications: QuietNotifications(), aiKeyReader: { "" })
         var popups = 0
         state.showOverlay = { popups += 1 }
         state.enqueueExternal("提醒我报销", id: "create")
         for _ in 0..<200 where state.busy { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(legacy.status, "failed")
-        XCTAssertTrue(legacy.issue.contains("没有开头口令"))
+        XCTAssertTrue(legacy.issue.contains("未识别到事项意图"))
         XCTAssertEqual(state.workspace.tasks.map(\.title), ["报销"])
         XCTAssertEqual(popups, 1, "Legacy ordinary speech must not open a popup")
         let question = try XCTUnwrap(state.workspace.questions.first)
         let before = try repository.pending().count
-        for text in ["新增一个页面", "明天下午三点", "是的", "面试完成了"] {
+        for text in ["新增一个页面", "天气不错"] {
             state.enqueueExternal(text, id: UUID().uuidString, answerID: question.id)
         }
         XCTAssertEqual(try repository.pending().count, before)

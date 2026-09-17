@@ -36,7 +36,7 @@ public struct ClipboardTranscriptionCapture: Sendable {
         // An ordinary snapshot can precede the input method's final write.
         // Only emitting a command consumes this channel; the owning session
         // bounds how long an ignored snapshot may wait for a revision.
-        guard AutomaticCapturePolicy.accepts(text) else { return .ignored }
+        guard AutomaticCapturePolicy.accepts(text, answering: questionID != nil) else { return .ignored }
         delivered = true
         return .command(text)
     }

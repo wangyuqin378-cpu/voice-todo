@@ -174,12 +174,10 @@ import VoiceTodoCore
         func turn(_ input: String) async throws {
             let start = Date.now
             let question = workspace.questions.first
-            let local = LocalInterpreter.interpret(input, workspace: workspace, question: question, now: now, timeZone: "Asia/Shanghai")
-            let proposal: Proposal
-            if let local { proposal = local }
-            else { proposal = try await client.interpret(input: input, workspace: workspace, question: question, key: key, now: now, timeZone: "Asia/Shanghai") }
+            let proposal = try await client.interpret(input: input, workspace: workspace, question: question,
+                key: key, now: now, timeZone: "Asia/Shanghai")
             workspace = try TaskReducer.apply(proposal, to: workspace, inputID: UUID().uuidString, input: input, answering: question?.id, now: now).workspace
-            rows.append(["input": input, "route": local == nil ? "ai" : "local", "seconds": Date.now.timeIntervalSince(start),
+            rows.append(["input": input, "route": "ai", "seconds": Date.now.timeIntervalSince(start),
                          "actions": try JSONSerialization.jsonObject(with: JSONEncoder().encode(proposal)),
                          "workspace": try JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace))])
         }

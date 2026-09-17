@@ -18,7 +18,7 @@ import VoiceTodoCore
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
         addTeardownBlock { defaults.removePersistentDomain(forName: name) }
         let settings = AppSettings(defaults: defaults); settings.speakQuestions = false
-        return try AppState(repository: repository, settings: settings, notifications: RecoveryNotifications())
+        return try AppState(repository: repository, settings: settings, notifications: RecoveryNotifications(), aiKeyReader: { "" })
     }
     private func settle(_ state: AppState) async throws {
         for _ in 0..<200 where state.busy { try await Task.sleep(for: .milliseconds(5)) }

@@ -16,14 +16,20 @@ public struct AIConfiguration: Codable, Equatable, Sendable {
     }
 }
 
-public struct AIClient: Sendable {
+public protocol AIInterpreting: Sendable {
+    func interpret(input: String, workspace: Workspace, question: FollowUp?, key: String,
+                   now: Date, timeZone: String, defaultReminderHour: Int,
+                   defaultReminderLeadMinutes: Int) async throws -> Proposal
+}
+
+public struct AIClient: AIInterpreting {
     public var configuration: AIConfiguration
     public init(configuration: AIConfiguration) { self.configuration = configuration }
 
     public func interpret(input: String, workspace: Workspace, question: FollowUp?, key: String,
                           now: Date = .now, timeZone: String = TimeZone.current.identifier,
                           defaultReminderHour: Int = 9, defaultReminderLeadMinutes: Int = 10) async throws -> Proposal {
-        guard !key.isEmpty else { throw UserFacingError("请先在设置中填写 AI API Key。原话已经保留。") }
+        guard !key.isEmpty else { throw UserFacingError("AI 尚未配置，可继续使用本机规则或手动添加事项。") }
         guard input.count <= 25_000 else { throw UserFacingError("一次最多处理 25,000 个字符，请分段输入。") }
         var request = URLRequest(url: try configuration.endpoint(), timeoutInterval: 30)
         request.httpMethod = "POST"
