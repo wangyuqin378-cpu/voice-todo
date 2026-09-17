@@ -101,6 +101,47 @@ import VoiceTodoCore
         XCTAssertFalse(delivered.contains("材料交好了"))
         XCTAssertTrue(speech.text.isEmpty)
     }
+    func testFnModifierChordCannotSavePartialTaskAndNextNormalPressWorks() async throws {
+        let name = "com.wyq.voicetodo.qa." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = AppSettings(defaults: defaults); settings.speakQuestions = false
+        let repository = try Repository(inMemory: true)
+        let original = TodoItem(title: "交材料")
+        try repository.save(.init(tasks: [original]))
+        let speech = FakeFnSpeech(); var time = 0.0, keyReads = 0
+        let capture = FnSpeechCapture(speech: speech, now: { time })
+        let state = try AppState(repository: repository, settings: settings, notifications: FnNotifications(),
+            fnSpeechCapture: capture, aiKeyReader: { keyReads += 1; return "" })
+        state.hotkey.useInputMethod = true
+        var popups = 0
+        state.showOverlay = { popups += 1 }
+        let fn = NSEvent.ModifierFlags.function.rawValue
+        state.hotkey.handle(.flagsChanged, code: 63, flags: fn)
+        try await settle { capture.phase == .listening }
+        speech.text = "材料交好了"
+        state.hotkey.handle(.flagsChanged, code: 55, flags: fn | NSEvent.ModifierFlags.command.rawValue)
+        XCTAssertFalse(capture.active)
+        XCTAssertTrue(speech.text.isEmpty)
+        state.hotkey.handle(.flagsChanged, code: 55, flags: fn)
+        time = 1
+        state.hotkey.handle(.flagsChanged, code: 63, flags: 0)
+        XCTAssertEqual(speech.finishes, 0)
+        XCTAssertEqual(state.workspace.tasks, [original])
+        XCTAssertEqual(try repository.load().tasks, [original])
+        XCTAssertTrue(try repository.pending().isEmpty)
+        XCTAssertEqual(popups, 0); XCTAssertEqual(keyReads, 0)
+
+        time = 2
+        state.hotkey.handle(.flagsChanged, code: 63, flags: fn)
+        try await settle { capture.phase == .listening }
+        speech.text = "材料交好了"; time = 3
+        state.hotkey.handle(.flagsChanged, code: 63, flags: 0)
+        try await settle { !capture.active && !state.busy }
+        XCTAssertTrue(try XCTUnwrap(try repository.load().tasks.first).isCompleted)
+        XCTAssertEqual(speech.finishes, 1)
+        XCTAssertEqual(keyReads, 0)
+    }
     func testReleaseDuringStartupStopsAudioBeforeReadyAndRetainsOpeningWords() async throws {
         let speech = FakeFnSpeech(); speech.holdStart = true; var time = 0.0
         let capture = FnSpeechCapture(speech: speech, now: { time })

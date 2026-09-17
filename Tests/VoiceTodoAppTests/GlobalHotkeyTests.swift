@@ -45,6 +45,91 @@ import XCTest
         XCTAssertEqual(cancelled, 1)
     }
 
+    func testModifierAddedAfterFnCancelsEvenWhenModifierReleasesFirst() {
+        let fn = NSEvent.ModifierFlags.function.rawValue
+        for (code, modifier) in [(UInt16(55), NSEvent.ModifierFlags.command),
+                                 (UInt16(58), .option), (UInt16(59), .control), (UInt16(56), .shift)] {
+            let key = GlobalHotkey(); key.useInputMethod = true
+            var presses = 0, releases = 0, cancellations = 0
+            key.onFnPress = { presses += 1 }; key.onFnRelease = { releases += 1 }
+            key.onExternalCancel = { cancellations += 1 }
+            key.handle(.flagsChanged, code: 63, flags: fn)
+            key.handle(.flagsChanged, code: code, flags: fn | modifier.rawValue)
+            key.handle(.flagsChanged, code: code, flags: fn)
+            key.handle(.flagsChanged, code: 63, flags: 0)
+            XCTAssertEqual(presses, 1)
+            XCTAssertEqual(cancellations, 1)
+            XCTAssertEqual(releases, 0, "A chord must not finalize the partial recording")
+            key.handle(.flagsChanged, code: 63, flags: fn)
+            key.handle(.flagsChanged, code: 63, flags: 0)
+            XCTAssertEqual(presses, 2); XCTAssertEqual(releases, 1)
+        }
+    }
+    func testSuppressedFnPressHasNoReleaseAndOrphanReleaseDoesNothing() {
+        let fn = NSEvent.ModifierFlags.function.rawValue
+        let key = GlobalHotkey(); key.useInputMethod = true
+        var presses = 0, releases = 0
+        key.onFnPress = { presses += 1 }; key.onFnRelease = { releases += 1 }
+        key.handle(.flagsChanged, code: 63, flags: 0)
+        key.handle(.keyDown, code: 0, flags: 0)
+        key.handle(.flagsChanged, code: 63, flags: fn)
+        key.handle(.keyUp, code: 0, flags: fn)
+        key.handle(.flagsChanged, code: 63, flags: 0)
+        XCTAssertEqual(presses, 0); XCTAssertEqual(releases, 0)
+    }
+    func testFnRepeatedDownAndResetDoNotRestartOrFinalizeCapture() {
+        let fn = NSEvent.ModifierFlags.function.rawValue
+        let key = GlobalHotkey(); key.useInputMethod = true
+        var presses = 0, releases = 0
+        key.onFnPress = { presses += 1 }; key.onFnRelease = { releases += 1 }
+        key.handle(.flagsChanged, code: 63, flags: fn)
+        key.handle(.flagsChanged, code: 63, flags: fn)
+        XCTAssertEqual(presses, 1)
+        key.reset(clearHeldKeys: true)
+        key.handle(.flagsChanged, code: 63, flags: 0)
+        XCTAssertEqual(releases, 0)
+        key.handle(.flagsChanged, code: 63, flags: fn)
+        key.handle(.flagsChanged, code: 63, flags: 0)
+        XCTAssertEqual(presses, 2); XCTAssertEqual(releases, 1)
+    }
+    func testFnChordReleaseOrderDoesNotDeliverAndAllowsNextPress() {
+        let fn = NSEvent.ModifierFlags.function.rawValue
+        let command = NSEvent.ModifierFlags.command.rawValue
+        for modifierFirst in [false, true] {
+            let key = GlobalHotkey(); key.useInputMethod = true
+            var starts = 0, releases = 0, cancellations = 0
+            key.onFnPress = { starts += 1 }; key.onFnRelease = { releases += 1 }
+            key.onExternalCancel = { cancellations += 1 }
+            if modifierFirst {
+                key.handle(.flagsChanged, code: 55, flags: command)
+                key.handle(.flagsChanged, code: 63, flags: fn | command)
+            } else {
+                key.handle(.flagsChanged, code: 63, flags: fn)
+                key.handle(.flagsChanged, code: 55, flags: fn | command)
+            }
+            key.handle(.flagsChanged, code: 63, flags: command)
+            key.handle(.flagsChanged, code: 55, flags: 0)
+            XCTAssertEqual(starts, modifierFirst ? 0 : 1)
+            XCTAssertEqual(releases, 0); XCTAssertEqual(cancellations, 1)
+            key.handle(.flagsChanged, code: 63, flags: fn)
+            key.handle(.flagsChanged, code: 63, flags: 0)
+            XCTAssertEqual(releases, 1)
+        }
+    }
+    func testFnFlagOnOrdinaryKeyStillCancelsWhenPressEventWasMissing() {
+        let key = GlobalHotkey(); key.useInputMethod = true
+        let fn = NSEvent.ModifierFlags.function.rawValue
+        var cancellations = 0, releases = 0
+        key.onExternalCancel = { cancellations += 1 }; key.onFnRelease = { releases += 1 }
+        key.handle(.keyDown, code: 49, flags: fn)
+        key.handle(.keyUp, code: 49, flags: fn)
+        key.handle(.flagsChanged, code: 63, flags: 0)
+        XCTAssertEqual(cancellations, 1); XCTAssertEqual(releases, 0)
+        key.handle(.flagsChanged, code: 63, flags: fn)
+        key.handle(.flagsChanged, code: 63, flags: 0)
+        XCTAssertEqual(releases, 1)
+    }
+
     // Feed the application's real event handler directly. No system events,
     // microphone access, permissions, or personal task data are used here.
     func testRightOptionTapReachesActionWithoutPollingUnrelatedKeyStates() {

@@ -51,6 +51,37 @@ import VoiceTodoCore
 }
 
 @MainActor final class InputMethodBridgeTests: XCTestCase {
+    func testFnModifierChordDropsLateTranscriptionAndNextSessionStillReceives() {
+        let desktop = DictationDesktop()
+        desktop.field(desktop.original); desktop.focus(desktop.original)
+        let bridge = InputMethodBridge(environment: desktop.environment, automaticPolling: false)
+        let key = GlobalHotkey(); key.useInputMethod = true
+        key.onFnPress = { bridge.press() }; key.onFnRelease = { bridge.release() }
+        key.onExternalCancel = { bridge.cancel() }
+        var commands: [String] = []
+        bridge.onCommand = { words, _, _ in commands.append(words) }
+        let fn = NSEvent.ModifierFlags.function.rawValue
+        key.handle(.flagsChanged, code: 63, flags: fn)
+        XCTAssertTrue(bridge.active)
+        key.handle(.flagsChanged, code: 55, flags: fn | NSEvent.ModifierFlags.command.rawValue)
+        XCTAssertFalse(bridge.active)
+        key.handle(.flagsChanged, code: 55, flags: fn)
+        desktop.clock = 1
+        key.handle(.flagsChanged, code: 63, flags: 0)
+        desktop.text(desktop.original, "材料交好了")
+        desktop.clipboardCount = 11; desktop.copiedText = "材料交好了"
+        bridge.poll(); desktop.clock = 3; bridge.poll()
+        XCTAssertTrue(commands.isEmpty)
+        XCTAssertEqual(desktop.clipboardReads, 0)
+
+        desktop.field(desktop.original)
+        key.handle(.flagsChanged, code: 63, flags: fn)
+        desktop.clock = 4
+        key.handle(.flagsChanged, code: 63, flags: 0)
+        desktop.text(desktop.original, "提醒我明天交材料")
+        bridge.poll(); desktop.clock = 5.3; bridge.poll()
+        XCTAssertEqual(commands, ["提醒我明天交材料"])
+    }
     func testSameFnConversationSurvivesEditorRefreshThroughReminderCompletionAndUndo() throws {
         let desktop = DictationDesktop()
         desktop.field(desktop.original); desktop.focus(desktop.original)

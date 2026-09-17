@@ -6,7 +6,7 @@
 
 A small macOS menu-bar app for turning spoken Chinese into to-dos—and marking them done by speaking again. It keeps a local list, understands dates, sets one-time reminders when requested, and lets you undo an action.
 
-**Current source version: 0.1.1 / build33, in development.** macOS 26 only; Windows and Linux clients are not available yet, and there is no notarized download. Receiving transcripts from other voice tools is experimental.
+**Current source version: 0.1.1 / build34, in development.** macOS 26 only; Windows and Linux clients are not available yet, and there is no notarized download. Receiving transcripts from other voice tools is experimental.
 
 <img src="assets/readme/hero-en.svg" width="100%" alt="随口清单: say a task to add it, then say it is done to complete it. Workflow illustration, not an app screenshot.">
 
@@ -46,6 +46,8 @@ The aim is to attach this small workflow to a voice-input habit you already have
 
 Simple tasks run locally; only unresolved wording needs AI. Build33 checks for hypothetical plans and requests for advice: “如果我想住两天水屋呢，再帮我安排一下” stays quiet, while “我明天入住酒店” can still become a task. Both capture and mutation validation inspect the whole utterance so a model cannot save a fragment stripped of its condition. Claude Messages and OpenAI-compatible Chat Completions remain supported, without requiring a Flash model or a fixed opening phrase. AI does not guarantee perfect accuracy.
 
-[Product direction](docs/PRODUCT.md) · [Validation and remaining device checks](docs/REVIEW-BUILD33.md) · [Report an issue](https://github.com/wangyuqin378-cpu/voice-todo/issues)
+Build34 prevents Fn chords from submitting partial dictation. Adding another modifier cancels that capture regardless of release order; the next standalone Fn press still works.
+
+[Product direction](docs/PRODUCT.md) · [Validation and remaining device checks](docs/REVIEW-BUILD34.md) · [Report an issue](https://github.com/wangyuqin378-cpu/voice-todo/issues)
 
 **License:** source is public; an open-source license has not been specified.

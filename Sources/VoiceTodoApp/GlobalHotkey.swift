@@ -25,6 +25,8 @@ import VoiceTodoCore
     private var gesture = HotkeyGesture()
     private var ownsHoldRecording = false
     private var pressedAt: TimeInterval?
+    private var fnPressed = false
+    private var fnBlocked = false
     // Only retain currently held virtual keys; never collect typed text or a key history.
     private var heldKeys: Set<UInt16> = []
     // Only opaque, process-randomized event fingerprints are retained briefly.
@@ -102,6 +104,7 @@ import VoiceTodoCore
 
     func reset(clearHeldKeys: Bool = false) {
         onExternalCancel?()
+        fnPressed = false; fnBlocked = false
         delayed?.cancel(); delayed = nil
         perform(gesture.reset()); ownsHoldRecording = false; pressedAt = nil
         if clearHeldKeys { heldKeys.removeAll() }
@@ -137,13 +140,31 @@ import VoiceTodoCore
             }
             // Dictation tools can commit via synthetic Cmd+V. Do not mistake that
             // insertion mechanism for the user abandoning the voice session.
-            if type == .keyDown, code == 53 || flags & NSEvent.ModifierFlags.function.rawValue != 0 { onExternalCancel?() }
+            if type == .keyDown, code == 53 {
+                if fnPressed { fnBlocked = true }
+                onExternalCancel?()
+            } else if type == .keyDown, fnPressed || flags & NSEvent.ModifierFlags.function.rawValue != 0 {
+                blockFnChord()
+            }
+            let other = flags & (NSEvent.ModifierFlags.command.rawValue | NSEvent.ModifierFlags.option.rawValue | NSEvent.ModifierFlags.control.rawValue | NSEvent.ModifierFlags.shift.rawValue)
             if type == .flagsChanged, code == 63 {
                 onDetected?()
-                let other = flags & (NSEvent.ModifierFlags.command.rawValue | NSEvent.ModifierFlags.option.rawValue | NSEvent.ModifierFlags.control.rawValue | NSEvent.ModifierFlags.shift.rawValue)
-                if other != 0 || !heldKeys.isEmpty { onDiagnostic?("检测到 Fn 组合键，本次不接收。"); onExternalCancel?() }
-                else if flags & NSEvent.ModifierFlags.function.rawValue != 0 { onDiagnostic?("已按下 Fn"); onFnPress?() }
-                else { onDiagnostic?("已松开 Fn"); onFnRelease?() }
+                if flags & NSEvent.ModifierFlags.function.rawValue != 0 {
+                    // A press owns exactly one release. Suppression remains in
+                    // effect even if the extra modifier/key is released first.
+                    if !fnPressed {
+                        fnPressed = true; fnBlocked = false
+                        if other != 0 || !heldKeys.isEmpty { blockFnChord() }
+                        else { onDiagnostic?("已按下 Fn"); onFnPress?() }
+                    } else if other != 0 || !heldKeys.isEmpty { blockFnChord() }
+                } else if fnPressed {
+                    if other != 0 || !heldKeys.isEmpty { blockFnChord() }
+                    let shouldRelease = !fnBlocked
+                    fnPressed = false; fnBlocked = false
+                    if shouldRelease { onDiagnostic?("已松开 Fn"); onFnRelease?() }
+                }
+            } else if type == .flagsChanged, fnPressed, other != 0 {
+                blockFnChord()
             }
             if type == .keyDown { heldKeys.insert(code); if code == 53 { onCancel?() } }
             if type == .keyUp { heldKeys.remove(code) }
@@ -186,6 +207,12 @@ import VoiceTodoCore
             delayed?.cancel(); perform(gesture.combine())
             onDiagnostic?("检测到组合键，本次未录音。")
         }
+    }
+    private func blockFnChord() {
+        guard !fnBlocked else { return }
+        fnBlocked = true
+        onDiagnostic?("检测到 Fn 组合键，本次不接收。")
+        onExternalCancel?()
     }
     private func perform(_ effect: HotkeyGesture.Effect) {
         switch effect {
