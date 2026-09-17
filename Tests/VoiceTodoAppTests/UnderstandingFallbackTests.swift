@@ -24,18 +24,32 @@ private actor StubUnderstanding: AIInterpreting {
         return proposal
     }
 }
+private actor HeldUnderstanding: AIInterpreting {
+    var calls = 0
+    private let proposal: Proposal
+    private var released = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    init(_ proposal: Proposal) { self.proposal = proposal }
+    func release() { released = true; waiters.forEach { $0.resume() }; waiters = [] }
+    func interpret(input: String, workspace: Workspace, question: FollowUp?, key: String,
+                   now: Date, timeZone: String, defaultReminderHour: Int, defaultReminderLeadMinutes: Int) async throws -> Proposal {
+        calls += 1
+        if !released { await withCheckedContinuation { waiters.append($0) } }
+        return proposal
+    }
+}
 @MainActor final class UnderstandingFallbackTests: XCTestCase {
-    private func app(key: String = "", ai: StubUnderstanding = .init(), workspace: Workspace = .init()) throws -> AppState {
+    private func app(key: String = "", ai: any AIInterpreting = StubUnderstanding(), workspace: Workspace = .init(), timeout: TimeInterval = 8, keyReader: (() throws -> String)? = nil) throws -> AppState {
         let suite = "com.wyq.voicetodo.qa." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let settings = AppSettings(defaults: defaults); settings.speakQuestions = false
         let repository = try Repository(inMemory: true); try repository.save(workspace)
         return try AppState(repository: repository, settings: settings, notifications: OfflineNotifications(),
-                            aiKeyReader: { key }, aiInterpreter: ai)
+                            aiKeyReader: keyReader ?? { key }, aiInterpreter: ai, aiWaitLimit: timeout)
     }
-    private func settle(_ state: AppState) async throws {
-        for _ in 0..<200 where state.busy { try await Task.sleep(for: .milliseconds(5)) }
+    private func settle(_ state: AppState, attempts: Int = 200) async throws {
+        for _ in 0..<attempts where state.busy { try await Task.sleep(for: .milliseconds(5)) }
         XCTAssertFalse(state.busy)
     }
     private func say(_ text: String, to state: AppState) async throws {
@@ -96,66 +110,187 @@ private actor StubUnderstanding: AIInterpreting {
         XCTAssertEqual(state.pending.count, 1, "Keep the source until all items have been organized")
         state.dismissCapture(capture); XCTAssertTrue(state.pending.isEmpty)
     }
-    func testConfiguredAIIsFirstEvenWhenLocalRuleCouldCreate() async throws {
-        // The stub requests clarification; a local-first implementation would create immediately.
+    private let complex = "记一下买牛奶以及买面包"
+    private let split = Proposal(actions: [
+        .init(kind: .create, title: "买牛奶", noReminder: true),
+        .init(kind: .create, title: "买面包", noReminder: true)
+    ])
+    func testSimpleCommandsNeverReadKeyOrCallConfiguredAI() async throws {
         let ai = StubUnderstanding(.init(actions: [.init(kind: .clarify, question: "具体哪一种牛奶？")]))
-        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
+        var keyReads = 0
+        let state = try app(ai: ai, keyReader: { keyReads += 1; throw URLError(.notConnectedToInternet) })
         try await say("记一下买牛奶", to: state)
-        let count = await ai.calls; XCTAssertEqual(count, 1)
-        XCTAssertTrue(state.workspace.tasks.isEmpty)
-        XCTAssertEqual(state.workspace.questions.first?.question, "具体哪一种牛奶？")
+        try await say("我明天下午三点面试，提醒我一下", to: state)
+        try await say("面试完成了", to: state)
+        try await say("撤销", to: state)
+        try await say("帮我取消面试", to: state)
+        XCTAssertEqual(state.workspace.tasks.map(\.title), ["买牛奶"])
+        XCTAssertTrue(state.workspace.questions.isEmpty)
+        XCTAssertTrue(state.understandingNotice.isEmpty)
+        XCTAssertEqual(keyReads, 0)
+        let calls = await ai.calls; XCTAssertEqual(calls, 0)
     }
-    func testAIOutageFallsBackWithoutLosingTheTask() async throws {
-        let ai = StubUnderstanding(); let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
-        try await say("明天下午三点面试", to: state)
-        let count = await ai.calls; XCTAssertEqual(count, 1)
-        XCTAssertEqual(state.workspace.tasks.first?.title, "面试")
-        XCTAssertNil(state.workspace.tasks.first?.reminderAt)
+    func testConfiguredSlowAIIsSkippedForSimpleMixedInput() async throws {
+        let ai = HeldUnderstanding(split)
+        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai, workspace: .init(tasks: [.init(title: "报销")]))
+        try await say("报销好了，明天下午三点提醒我买牛奶", to: state)
+        XCTAssertTrue(state.workspace.tasks[0].isCompleted)
+        XCTAssertEqual(state.workspace.tasks.last?.title, "买牛奶")
+        XCTAssertFalse(state.waitingForAI)
+        let calls = await ai.calls; XCTAssertEqual(calls, 0)
+    }
+    func testComplexPhraseUsesAIAndCommitsAllActionsTogether() async throws {
+        let ai = StubUnderstanding(split)
+        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
+        try await say(complex, to: state)
+        let calls = await ai.calls; XCTAssertEqual(calls, 1)
+        XCTAssertEqual(state.workspace.tasks.map(\.title), ["买牛奶", "买面包"])
         XCTAssertTrue(state.pending.isEmpty)
     }
-    func testUnsafeAICompletionFallsBackWithoutCompletingSimilarTask() async throws {
+    func testAmbiguousCompletionAsksLocallyWithoutCallingAI() async throws {
         let old = TodoItem(id: "visa", title: "交签证材料")
         let ai = StubUnderstanding(.init(actions: [.init(kind: .complete, taskID: old.id, candidates: [old.id], evidence: "材料交好了")]))
         let state = try app(key: "fake-qa-key-not-a-credential", ai: ai, workspace: .init(tasks: [old]))
         try await say("材料交好了", to: state)
         XCTAssertEqual(state.workspace.tasks, [old])
         XCTAssertEqual(state.workspace.questions.first?.intent, .complete)
+        let calls = await ai.calls; XCTAssertEqual(calls, 0)
     }
-    func testBrokenConfigurationIsNotCalledForEveryTaskAndCheckCanRecover() async throws {
+    func testBrokenConfigurationPausesComplexRequestsButSimpleCommandsStayInstant() async throws {
         let ai = StubUnderstanding(.init(actions: [.init(kind: .noop)]), failure: AIServiceError(.credentials, "密钥无效"))
         let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
-        try await say("记一下买牛奶", to: state)
+        state.enqueueExternal(complex, id: "failed"); try await settle(state)
+        XCTAssertEqual(state.pending.count, 1)
+        XCTAssertFalse(state.errorMessage.isEmpty)
+        XCTAssertTrue(state.understandingNotice.contains("本机处理"))
+        state.enqueueExternal(complex, id: "paused"); try await settle(state)
         try await say("记一下买车票", to: state)
         var count = await ai.calls; XCTAssertEqual(count, 1)
-        XCTAssertEqual(state.workspace.tasks.map(\.title), ["买牛奶", "买车票"])
-        XCTAssertTrue(state.understandingNotice.contains("本机规则"))
-        XCTAssertFalse(state.connectionOK)
+        XCTAssertEqual(state.workspace.tasks.map(\.title), ["买车票"])
+        XCTAssertTrue(state.understandingNotice.isEmpty, "Simple success must not show an irrelevant AI warning")
         await ai.recover()
         state.checkLocalConnection()
         for _ in 0..<200 where state.checkingConnection { try await Task.sleep(for: .milliseconds(5)) }
         XCTAssertTrue(state.connectionOK)
-        XCTAssertTrue(state.understandingNotice.isEmpty)
-        try await say("记一下买面包", to: state)
-        count = await ai.calls; XCTAssertEqual(count, 3, "Manual check and subsequent input must reach the service again")
-        XCTAssertEqual(state.workspace.tasks.count, 2, "AI noop wins after recovery")
+        try await say(complex, to: state)
+        count = await ai.calls; XCTAssertEqual(count, 3, "Manual check and complex input reach the recovered service")
+        XCTAssertEqual(state.workspace.tasks.count, 1)
     }
-    func testNetworkOutageUsesLocalRulesForSubsequentInputsDuringCooldown() async throws {
+    func testNetworkOutageRetainsUnresolvedTextAndDoesNotBlockLocalTasks() async throws {
         let ai = StubUnderstanding(); let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
-        try await say("记一下买牛奶", to: state)
+        state.enqueueExternal(complex, id: "offline"); try await settle(state)
+        state.enqueueExternal(complex, id: "cooldown"); try await settle(state)
+        XCTAssertTrue(state.understandingNotice.contains("1 分钟"))
+        XCTAssertEqual(state.pending.count, 2)
         try await say("记一下买车票", to: state)
         let count = await ai.calls; XCTAssertEqual(count, 1)
-        XCTAssertEqual(state.workspace.tasks.count, 2)
-        XCTAssertTrue(state.understandingNotice.contains("1 分钟"))
-    }
-    func testConfigurationChangeRestoresAttemptWithoutChangingKey() async throws {
-        let ai = StubUnderstanding(.init(actions: [.init(kind: .noop)]), failure: AIServiceError(.configuration, "模型不存在"))
-        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
-        try await say("记一下买牛奶", to: state)
-        await ai.recover(); state.settings.model = "correct-model"
-        try await say("记一下买车票", to: state)
-        let count = await ai.calls; XCTAssertEqual(count, 2)
         XCTAssertEqual(state.workspace.tasks.count, 1)
+    }
+    func testConfigurationChangeRestoresComplexAttemptWithoutChangingKey() async throws {
+        let ai = StubUnderstanding(split, failure: AIServiceError(.configuration, "模型不存在"))
+        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
+        state.enqueueExternal(complex, id: "broken"); try await settle(state)
+        XCTAssertEqual(state.workspace.tasks.count, 0)
+        await ai.recover(); state.settings.model = "correct-model"
+        try await say(complex, to: state)
+        let count = await ai.calls; XCTAssertEqual(count, 2)
+        XCTAssertEqual(state.workspace.tasks.count, 2)
         XCTAssertTrue(state.understandingNotice.isEmpty)
+    }
+    func testTimeoutReleasesQueueAndLateSuccessCannotWriteTasks() async throws {
+        let ai = HeldUnderstanding(split)
+        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai, timeout: 0.08)
+        state.enqueueExternal(complex, id: "slow")
+        for _ in 0..<100 where !state.waitingForAI { try await Task.sleep(for: .milliseconds(1)) }
+        XCTAssertTrue(state.waitingForAI)
+        // This input must proceed when the deadline expires, without waiting for
+        // the non-cooperative first response. The failed source remains recoverable.
+        state.enqueueExternal("记一下买车票", id: "next")
+        try await settle(state)
+        XCTAssertFalse(state.waitingForAI)
+        XCTAssertEqual(state.workspace.tasks.map(\.title), ["买车票"])
+        XCTAssertEqual(state.pending.map(\.text), [complex])
+        XCTAssertTrue(state.pending.first?.issue.contains("超时") == true)
+        await ai.release()
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(state.workspace.tasks.map(\.title), ["买车票"])
+        XCTAssertFalse(state.workspace.appliedInputs.contains("external-slow"))
+    }
+    func testStopWaitingRetainsTextAndRetryCannotDoubleApplyLateResponse() async throws {
+        let ai = HeldUnderstanding(split)
+        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai)
+        state.enqueueExternal(complex, id: "cancel")
+        for _ in 0..<100 where !state.waitingForAI { try await Task.sleep(for: .milliseconds(1)) }
+        XCTAssertTrue(state.waitingForAI)
+        for _ in 0..<100 {
+            if await ai.calls == 1 { break }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        state.stopWaitingForAI(); try await settle(state)
+        XCTAssertTrue(state.workspace.tasks.isEmpty)
+        XCTAssertTrue(state.errorMessage.contains("取消"))
+        XCTAssertFalse(state.waitingForAI)
+        let capture = try XCTUnwrap(state.pending.first)
+        await ai.release()
+        state.retry(capture); try await settle(state)
+        XCTAssertTrue(state.errorMessage.isEmpty, state.errorMessage)
+        XCTAssertEqual(state.workspace.tasks.map(\.title), ["买牛奶", "买面包"])
+        XCTAssertTrue(state.pending.isEmpty)
+        let calls = await ai.calls; XCTAssertEqual(calls, 2, "User cancellation must not pause AI health")
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(state.workspace.tasks.count, 2)
+    }
+    func testInvalidComplexAIResultIsRetainedWithoutPartialWrites() async throws {
+        let old = TodoItem(id: "visa", title: "交签证材料")
+        let ai = StubUnderstanding(.init(actions: [
+            .init(kind: .create, title: "买牛奶", noReminder: true),
+            .init(kind: .complete, taskID: old.id, candidates: [old.id])
+        ]))
+        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai, workspace: .init(tasks: [old]))
+        state.enqueueExternal(complex, id: "unsafe"); try await settle(state)
+        let calls = await ai.calls; XCTAssertEqual(calls, 1)
+        XCTAssertEqual(state.workspace.tasks, [old])
+        XCTAssertEqual(state.pending.count, 1)
+    }
+    func testConnectionCheckAlsoHasDeadlineAndIgnoresLateSuccess() async throws {
+        let ai = HeldUnderstanding(.init(actions: [.init(kind: .noop)]))
+        let state = try app(key: "fake-qa-key-not-a-credential", ai: ai, timeout: 0.03)
+        state.checkLocalConnection()
+        for _ in 0..<200 where state.checkingConnection { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertFalse(state.checkingConnection)
+        XCTAssertFalse(state.connectionOK)
+        XCTAssertTrue(state.connectionStatus.contains("超时"))
+        await ai.release()
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertFalse(state.connectionOK)
+        XCTAssertTrue(state.workspace.tasks.isEmpty)
+    }
+    func testLiveLocalFirstRoutingWithConfiguredService() async throws {
+        guard ProcessInfo.processInfo.environment["VOICETODO_LIVE_ROUTING_QA"] == "1" else {
+            throw XCTSkip("Explicit live routing QA only")
+        }
+        let liveDefaults = try XCTUnwrap(UserDefaults(suiteName: "com.wyq.voicetodo"))
+        let configuration = AppSettings(defaults: liveDefaults).configuration
+        var keyReads = 0
+        let state = try app(ai: AIClient(configuration: configuration), keyReader: {
+            keyReads += 1
+            return try AIKey.read(configuration: configuration, defaults: liveDefaults)
+        })
+        state.settings.baseURL = configuration.baseURL; state.settings.model = configuration.model
+        state.settings.apiProtocol = configuration.apiProtocol
+        let localStart = Date.now
+        try await say("明天下午三点提醒我面试", to: state)
+        print("Routing QA: simple text-to-task \(Int(Date.now.timeIntervalSince(localStart) * 1000)) ms; key reads \(keyReads)")
+        XCTAssertEqual(keyReads, 0)
+        XCTAssertEqual(state.workspace.tasks.first?.title, "面试")
+        let aiStart = Date.now
+        state.enqueueExternal(complex, id: "live-complex")
+        try await settle(state, attempts: 2000)
+        print("Routing QA: complex text-to-result \(Int(Date.now.timeIntervalSince(aiStart) * 1000)) ms; retained inputs \(state.pending.count)")
+        XCTAssertEqual(keyReads, 1)
+        XCTAssertTrue(state.errorMessage.isEmpty, state.errorMessage)
+        XCTAssertTrue(state.pending.isEmpty)
+        XCTAssertEqual(state.workspace.tasks.map(\.title), ["面试", "买牛奶", "买面包"])
     }
     func testConnectionCheckRequiresNoopAndDoesNotWriteTasks() {
         XCTAssertThrowsError(try AppState.validateConnection(.init(actions: [.init(kind: .create, title: "wrong task")])))

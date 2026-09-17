@@ -41,6 +41,14 @@ final class ReminderLeadTests: XCTestCase {
             XCTAssertEqual(task.plannedAt?.timeIntervalSince(task.reminderAt!), Double(minutes * 60))
         }
     }
+    func testMidSentenceReminderKeepsLeadWithoutKnownTaskKeyword() throws {
+        for title in ["整理文件", "喝水", "检查三二版本"] {
+            let task = try XCTUnwrap(run("明天下午三点提醒我" + title).tasks.first)
+            XCTAssertEqual(task.title, title)
+            XCTAssertEqual(task.plannedAt, Dates.parse("2026-09-18T15:00:00+08:00"))
+            XCTAssertEqual(task.reminderAt, Dates.parse("2026-09-18T14:50:00+08:00"))
+        }
+    }
     func testRelativeDelayIsNotShortened() throws {
         for (input, seconds) in [("十分钟后提醒我取快递",600), ("半小时后提醒我取快递",1800)] {
             let task = try XCTUnwrap(run(input).tasks.first)

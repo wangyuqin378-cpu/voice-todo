@@ -53,7 +53,7 @@ enum CaptureRecovery {
 
 extension AppState {
     var captureStatus: CaptureStatus {
-        if phase == .processing { return .init(title: "正在处理这句话…", symbol: "ellipsis.bubble") }
+        if phase == .processing { return .init(title: waitingForAI ? "正在请 AI 理解…" : "正在本机处理…", symbol: "ellipsis.bubble") }
         if phase == .finishing || (receivingInputMethod && inputMethodFinishing) {
             return .init(title: "录音已结束，正在整理…", symbol: "ellipsis.bubble")
         }

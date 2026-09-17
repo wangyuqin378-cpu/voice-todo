@@ -14,6 +14,9 @@ import VoiceTodoCore
     var errorMessage = ""
     var reminderWarning = ""
     var understandingNotice = ""
+    var waitingForAI = false
+    let aiWaitLimit: TimeInterval
+    var aiWaitingMessage: String { "这句话需要 AI 理解，最多等待 \(Int(aiWaitLimit.rounded(.up))) 秒。原话已保存。" }
     @ObservationIgnored private var aiHealth = AIHealth()
     var connectionStatus = "尚未检查"
     var connectionOK = false
@@ -63,10 +66,11 @@ import VoiceTodoCore
     var overlayQuestion: FollowUp? { workspace.questions.first { $0.id == overlayQuestionID } }
     var busy: Bool { phase != .idle }
 
-    init(repository: Repository, settings: AppSettings, demo: Bool = false, notifications: (any TaskNotifications)? = nil, captureDiagnostics: CaptureDiagnostics? = nil, hotkeyDiagnostics: HotkeyDiagnostics? = nil, fnSpeechCapture: FnSpeechCapture? = nil, aiKeyReader: (() throws -> String)? = nil, aiInterpreter: (any AIInterpreting)? = nil) throws {
+    init(repository: Repository, settings: AppSettings, demo: Bool = false, notifications: (any TaskNotifications)? = nil, captureDiagnostics: CaptureDiagnostics? = nil, hotkeyDiagnostics: HotkeyDiagnostics? = nil, fnSpeechCapture: FnSpeechCapture? = nil, aiKeyReader: (() throws -> String)? = nil, aiInterpreter: (any AIInterpreting)? = nil, aiWaitLimit: TimeInterval = AIRequestDeadline.defaultSeconds) throws {
         self.repository = repository; self.settings = settings; self.demo = demo
         self.aiKeyReader = aiKeyReader
         self.aiInterpreter = aiInterpreter
+        self.aiWaitLimit = aiWaitLimit
         self.notifications = notifications ?? NotificationService()
         inputMethod.diagnostics = captureDiagnostics
         fnSpeech = fnSpeechCapture ?? FnSpeechCapture()
@@ -299,10 +303,15 @@ import VoiceTodoCore
     func cancelRecording() {
         inputMethod.cancel()
         fnSpeech.cancel()
+        if waitingForAI { stopWaitingForAI(); hideOverlay?(); return }
         guard phase == .listening || phase == .finishing else { speaker.stop(); hideOverlay?(); return }
         recordingID = nil; recordingTask?.cancel(); recordingLimit?.cancel(); speech.cancel(); speaker.stop()
         recordingReady = false; releasedAt = nil
         phase = .idle; transcript = ""; message = "已取消录音"; hideOverlay?(); processNextQueued()
+    }
+    func stopWaitingForAI() {
+        guard waitingForAI else { return }
+        processingTask?.cancel()
     }
     func toggleRecording() {
         if fnSpeech.active { fnSpeech.end() }
@@ -392,51 +401,12 @@ import VoiceTodoCore
                 if currentQuestion == nil, CaptureRecovery.isUnboundReply(capture.text) {
                     throw UserFacingError("这句话没有对应的问题，请补充完整的事项和操作。")
                 }
-                // A configured model gets first interpretation, including simple
-                // phrases. Missing keys, service errors or invalid proposals fall
-                // back to deterministic paths without blocking basic task use.
+                // Resolve supported whole-input operations before reading any key
+                // or touching the network. Validate local proposals just like AI.
                 var understood: Proposal? = snapshot.appliedInputs.contains(capture.id) ? Proposal(actions: [.init(kind: .noop)]) : nil
-                let configuration = settings.configuration
-                var key = ""
                 understandingNotice = ""
-                do {
-                    key = try aiKeyReader.map { try $0() }
-                        ?? AIKey.read(configuration: configuration, defaults: settings.defaults)
-                } catch {
-                    connectionOK = false
-                    connectionStatus = "无法读取当前 AI 配置，已使用本机规则。请到设置检查连接。"
-                    understandingNotice = connectionStatus
-                }
-                aiHealth.prepare(configuration: configuration, key: key)
-                if understood == nil, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, aiHealth.canAttempt() {
-                    do {
-                        let candidate = try await (aiInterpreter ?? AIClient(configuration: configuration)).interpret(
-                            input: capture.text, workspace: snapshot, question: currentQuestion, key: key,
-                            now: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone,
-                            defaultReminderHour: settings.defaultReminderHour,
-                            defaultReminderLeadMinutes: settings.defaultReminderLeadMinutes)
-                        aiHealth.success()
-                        connectionOK = true; connectionStatus = "AI 可用 · " + configuration.model
-                        let adjusted = ReminderTiming.apply(to: candidate, input: capture.text, now: .now,
-                            leadMinutes: settings.defaultReminderLeadMinutes)
-                        _ = try TaskReducer.apply(adjusted, to: snapshot, inputID: capture.id,
-                            input: capture.text, answering: capture.questionID,
-                            inputDate: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone)
-                        understood = adjusted
-                    } catch is CancellationError { throw CancellationError() }
-                    catch {
-                        aiHealth.failure(error)
-                        connectionOK = false
-                        connectionStatus = aiHealth.status.isEmpty ? "本次 AI 结果未通过校验，已尝试本机规则。" : aiHealth.status
-                        understandingNotice = connectionStatus
-                    }
-                }
-                if understood == nil, !aiHealth.canAttempt() {
-                    connectionOK = false; connectionStatus = aiHealth.status
-                    understandingNotice = connectionStatus
-                }
                 if understood == nil {
-                    understood = LocalInterpreter.interpret(capture.text, workspace: snapshot, question: currentQuestion,
+                    let local = LocalInterpreter.interpret(capture.text, workspace: snapshot, question: currentQuestion,
                         now: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone,
                         defaultReminderHour: settings.defaultReminderHour,
                         defaultReminderLeadMinutes: settings.defaultReminderLeadMinutes)
@@ -445,8 +415,62 @@ import VoiceTodoCore
                             defaultReminderHour: settings.defaultReminderHour,
                             defaultReminderLeadMinutes: settings.defaultReminderLeadMinutes,
                             allowPlainCreation: !external || explicitlySubmitted)
+                    if let local, (try? TaskReducer.apply(local, to: snapshot, inputID: capture.id,
+                        input: capture.text, answering: capture.questionID,
+                        inputDate: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone)) != nil {
+                        understood = local
+                    }
                 }
-                guard let understood else { throw UserFacingError(OfflineInterpreter.recoveryMessage) }
+                if understood == nil {
+                    let configuration = settings.configuration
+                    var key = ""
+                    do {
+                        key = try aiKeyReader.map { try $0() }
+                            ?? AIKey.read(configuration: configuration, defaults: settings.defaults)
+                    } catch {
+                        connectionOK = false
+                        connectionStatus = "无法读取 AI 配置，请到设置检查连接。简单事项仍可在本机处理。"
+                        understandingNotice = connectionStatus
+                    }
+                    aiHealth.prepare(configuration: configuration, key: key)
+                    if !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, aiHealth.canAttempt() {
+                        waitingForAI = true
+                        defer { waitingForAI = false }
+                        do {
+                            let interpreter = aiInterpreter ?? AIClient(configuration: configuration)
+                            let input = capture.text, now = inputContext.interpretationDate
+                            let zone = inputContext.interpretationTimeZone, credential = key
+                            let hour = settings.defaultReminderHour, lead = settings.defaultReminderLeadMinutes
+                            let candidate = try await AIRequestDeadline.run(seconds: aiWaitLimit) {
+                                try await interpreter.interpret(input: input, workspace: snapshot, question: currentQuestion,
+                                    key: credential, now: now, timeZone: zone,
+                                    defaultReminderHour: hour, defaultReminderLeadMinutes: lead)
+                            }
+                            try Task.checkCancellation()
+                            let adjusted = ReminderTiming.apply(to: candidate, input: capture.text, now: .now,
+                                leadMinutes: settings.defaultReminderLeadMinutes)
+                            _ = try TaskReducer.apply(adjusted, to: snapshot, inputID: capture.id,
+                                input: capture.text, answering: capture.questionID,
+                                inputDate: inputContext.interpretationDate, timeZone: inputContext.interpretationTimeZone)
+                            aiHealth.success()
+                            connectionOK = true; connectionStatus = "AI 可用 · " + configuration.model
+                            understood = adjusted
+                        } catch is CancellationError { throw CancellationError() }
+                        catch {
+                            aiHealth.failure(error)
+                            connectionOK = false
+                            connectionStatus = aiHealth.status.isEmpty ? "本次 AI 结果未通过校验，原话已保留。" : aiHealth.status
+                            understandingNotice = connectionStatus
+                        }
+                    }
+                    if understood == nil, !aiHealth.canAttempt() {
+                        connectionOK = false; connectionStatus = aiHealth.status
+                        understandingNotice = connectionStatus
+                    }
+                }
+                guard let understood else {
+                    throw UserFacingError((understandingNotice.isEmpty ? "" : understandingNotice + "\n") + OfflineInterpreter.recoveryMessage)
+                }
                 proposal = understood
                 try Task.checkCancellation()
                 // Rebase an immediate lead alarm after network/recognition latency.
@@ -482,7 +506,7 @@ import VoiceTodoCore
                 catch { errorMessage = "保存处理状态失败，原文：\(capture.text)" }
                 if errorMessage.isEmpty { errorMessage = issue }
                 phase = .idle
-                if !external || explicitlySubmitted || AutomaticCapturePolicy.accepts(capture.text, answering: currentQuestion != nil) { showOverlay?() }
+                if !(error is CancellationError), !external || explicitlySubmitted || AutomaticCapturePolicy.accepts(capture.text, answering: currentQuestion != nil) { showOverlay?() }
             }
         }
     }
@@ -574,8 +598,10 @@ import VoiceTodoCore
                 let cleanedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !cleanedKey.isEmpty else { throw UserFacingError("请填写该服务的 API Key。") }
                 await AICompatibility.shared.reset(configuration)
-                let result = try await AIClient(configuration: configuration).interpret(
-                    input: "仅连接测试，不要改变任务，返回 noop。", workspace: Workspace(), question: nil, key: cleanedKey)
+                let result = try await AIRequestDeadline.run(seconds: aiWaitLimit) {
+                    try await AIClient(configuration: configuration).interpret(
+                        input: "仅连接测试，不要改变任务，返回 noop。", workspace: Workspace(), question: nil, key: cleanedKey)
+                }
                 try Self.validateConnection(result)
                 try Keychain.write(cleanedKey)
                 settings.baseURL = configuration.baseURL; settings.model = configuration.model
@@ -605,10 +631,13 @@ import VoiceTodoCore
                     aiHealth.success(); understandingNotice = ""; connectionStatus = "未配置 AI · 本机规则可用"; return
                 }
                 await AICompatibility.shared.reset(configuration)
-                let result = try await (aiInterpreter ?? AIClient(configuration: configuration)).interpret(
-                    input: "仅连接测试，返回 noop。", workspace: .init(), question: nil, key: key,
-                    now: .now, timeZone: TimeZone.current.identifier,
-                    defaultReminderHour: settings.defaultReminderHour, defaultReminderLeadMinutes: settings.defaultReminderLeadMinutes)
+                let interpreter = aiInterpreter ?? AIClient(configuration: configuration)
+                let hour = settings.defaultReminderHour, lead = settings.defaultReminderLeadMinutes
+                let result = try await AIRequestDeadline.run(seconds: aiWaitLimit) {
+                    try await interpreter.interpret(input: "仅连接测试，返回 noop。", workspace: .init(), question: nil, key: key,
+                        now: .now, timeZone: TimeZone.current.identifier,
+                        defaultReminderHour: hour, defaultReminderLeadMinutes: lead)
+                }
                 try Self.validateConnection(result)
                 aiHealth.success(); understandingNotice = ""
                 connectionOK = true; connectionStatus = "AI 连接成功 · " + configuration.model

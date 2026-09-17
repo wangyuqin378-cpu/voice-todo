@@ -33,8 +33,8 @@ struct AIHealth {
         // A rejected task proposal does not mean the service/configuration is broken.
     }
     var status: String {
-        if requiresConfiguration { return explanation + " 已使用本机规则；修正后检查连接可恢复 AI。" }
-        if pausedUntil != nil { return explanation + " 已使用本机规则；暂停 1 分钟后再试，可手动检查连接。" }
+        if requiresConfiguration { return explanation + " 简单事项仍可在本机处理；修正后检查连接可恢复 AI。" }
+        if pausedUntil != nil { return explanation + " 简单事项仍可在本机处理；暂停 1 分钟后再试，可手动检查连接。" }
         return ""
     }
 }

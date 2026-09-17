@@ -61,7 +61,11 @@ public enum LocalInterpreter {
                 return Proposal(actions: [.init(kind: .setReminder, taskID: question.taskIDs[0], reminderISO: Dates.iso(date), resolvesQuestionID: question.id)])
             }
         }
-        if NaturalTaskIntent.candidate(text), let proposal = NaturalTaskIntent.create(text, now: now, timeZone: timeZone, defaultReminderHour: defaultReminderHour) { return proposal }
+        // Explicit reminders also use the event-aware path when the title has
+        // no keyword from the background intent filter (e.g. 整理文件 / 喝水).
+        // Otherwise the legacy alarm-only path loses plannedAt and the lead.
+        if NaturalTaskIntent.candidate(text) || NaturalTaskIntent.wantsReminder(text),
+           let proposal = NaturalTaskIntent.create(text, now: now, timeZone: timeZone, defaultReminderHour: defaultReminderHour) { return proposal }
         // Multi-clause instructions, negations and corrections go to the semantic path as a whole.
         let noReminder = words.hasSuffix("不用提醒")
         var single = noReminder ? String(words.dropLast(4)).trimmingCharacters(in: CharacterSet(charactersIn: "，, ")) : words

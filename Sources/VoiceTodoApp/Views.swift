@@ -60,6 +60,7 @@ struct MainView: View {
             if !state.understandingNotice.isEmpty {
                 Button(state.understandingNotice) { openSettings() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
             }
+            if state.waitingForAI { AIWaitingView(state: state) }
             composer
             if !state.reminderWarning.isEmpty {
                 Button(state.reminderWarning) { openSettings() }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.orange)
@@ -286,7 +287,7 @@ struct SettingsView: View {
                     .font(.system(size: 13))
                 Text("普通转写不弹窗、不保存。识别到事项操作后显示结果；未成功的文字可在清单中处理。").font(.system(size: 13)).foregroundStyle(.secondary)
                 if settings.useInputMethod {
-                    Text("不用固定开头：个人安排、提醒、完成、取消都可自然表达，提醒放在句尾也可以。识别到相关意图才处理，普通聊天保持安静；AI 配置匹配且服务可用时优先理解，否则使用本机规则。")
+                    Text("不用固定开头：个人安排、提醒、完成、取消都可自然表达，提醒放在句尾也可以。识别到相关意图才处理，普通聊天保持安静；简单事项直接在本机处理，复杂表达才请 AI 帮忙，无需为每句话等待网络。")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Text("同名事项也会新增。已有事项的时间和提醒请在清单中手动编辑；语音完成需名称完整对应且唯一匹配。").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -343,7 +344,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("AI 增强（可选）").font(.headline)
                 Text("不填 API Key 也能创建、完成、取消和提醒。无法自动理解的原话会保留，可修改或手动整理。").font(.system(size: 13)).foregroundStyle(.secondary)
-                Text("密钥、接口与模型匹配且服务可用时，优先用 AI 理解。本次文字和清单中的事项名称、日期及完成状态会发送给你配置的服务；原始录音不会上传。").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("简单提醒、完成等操作先在本机处理。只有本机无法理解时才请求 AI，最多等待 8 秒，可随时停止；超时原话保留。调用 AI 时会发送本次文字及清单中的事项名称、日期和完成状态；原始录音不会上传。").font(.system(size: 12)).foregroundStyle(.secondary)
                 Text("当前模型：\(settings.model)").font(.system(size: 13))
                 if AIKey.hasLocalReference {
                     Text("使用本机已有配置，无需再次填写 API Key。").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -380,6 +381,18 @@ struct SettingsView: View {
     }
 }
 
+struct AIWaitingView: View {
+    var state: AppState
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text(state.aiWaitingMessage).font(.system(size: 12)).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Button("停止等待") { state.stopWaitingForAI() }.controlSize(.small)
+        }
+    }
+}
+
 struct OverlayView: View {
     var state: AppState
     var body: some View {
@@ -394,7 +407,8 @@ struct OverlayView: View {
             if state.phase == .listening || state.phase == .finishing || state.phase == .processing {
                 if state.phase == .processing {
                     Text(state.transcript).font(.system(size: 15)).lineLimit(5)
-                    Text("正在理解文字，原话会保留").font(.system(size: 11)).foregroundStyle(.secondary)
+                    if state.waitingForAI { AIWaitingView(state: state) }
+                    else { Text("正在本机处理").font(.system(size: 11)).foregroundStyle(.secondary) }
                 } else { RecorderControls(state: state) }
             } else {
                 if !state.errorMessage.isEmpty { Text(state.errorMessage).font(.system(size: 13)).foregroundStyle(.red).lineLimit(4) }

@@ -6,7 +6,7 @@
 
 A small macOS menu-bar app for turning spoken Chinese into to-dos—and marking them done by speaking again. It keeps a local list, understands dates, sets one-time reminders when requested, and lets you undo an action.
 
-**Current source version: 0.1.1 / build30, in development.** macOS 26 only; Windows and Linux clients are not available yet, and there is no notarized download. Receiving transcripts from other voice tools is experimental.
+**Current source version: 0.1.1 / build32, in development.** macOS 26 only; Windows and Linux clients are not available yet, and there is no notarized download. Receiving transcripts from other voice tools is experimental.
 
 <img src="assets/readme/hero-en.svg" width="100%" alt="随口清单: say a task to add it, then say it is done to complete it. Workflow illustration, not an app screenshot.">
 
@@ -36,7 +36,7 @@ The script creates a local development signature; it does not produce a notarize
 
 These are example commands, not a claim that every voice setup passes. Text-to-action tests exist; real microphone use, coexistence with other voice software and actual notification delivery still need device acceptance. If capture fails, use text input and check the [usage guide (中文)](docs/USAGE.md).
 
-**AI is optional.** When your key, endpoint, API format and model match and the service is available, AI interprets task-related text first; otherwise local rules handle supported wording. Service failures fall back to local rules too. Unresolved text stays in the recovery list, where you can edit it or add tasks manually. AI requests include the current text, task titles, dates, completion states and follow-up context. The app neither stores nor uploads raw audio. Keys use macOS Keychain and are not bundled with the app. [Data details (中文)](docs/USAGE.md#数据与备份).
+**AI is optional.** Simple reminders, exact completion/cancellation and supported multi-item inputs run locally, without reading a key or waiting for the network. Only wording the local rules cannot safely handle goes to your configured AI service. Each AI request has an eight-second total deadline and a Stop waiting button; late responses cannot change the list. Unresolved text stays in the recovery list, where you can edit it or add tasks manually. AI requests include the current text, task titles, dates, completion states and follow-up context. The app neither stores nor uploads raw audio. Keys use macOS Keychain and are not bundled with the app. [Data details (中文)](docs/USAGE.md#数据与备份).
 
 ## Why this project exists
 
@@ -44,8 +44,8 @@ Remembering a task often happens while doing something else. Opening another app
 
 The aim is to attach this small workflow to a voice-input habit you already have: say what needs doing, then say when it is done. The default Fn mode uses the app's own local speech recognition. Direct transcript reception from tools such as Typeless remains an experiment, with no official integration or compatibility certification.
 
-Build31 supports Claude Messages and OpenAI-compatible Chat Completions, negotiates explicitly rejected optional parameters, and pauses failing configurations. No Flash model is required. Natural phrasing, key-free local rules and manual recovery remain available. Completion and cancellation still require independently verified task evidence; AI does not guarantee perfect accuracy.
+Build32 makes local processing the default and reserves AI for unresolved wording. Slow or unavailable models cannot block simple tasks. Claude Messages and OpenAI-compatible Chat Completions remain supported; no Flash model or fixed opening phrase is required. Completion and cancellation still require independently verified task evidence; AI does not guarantee perfect accuracy.
 
-[Product direction](docs/PRODUCT.md) · [Validation and remaining device checks](docs/REVIEW-BUILD31.md) · [Report an issue](https://github.com/wangyuqin378-cpu/voice-todo/issues)
+[Product direction](docs/PRODUCT.md) · [Validation and remaining device checks](docs/REVIEW-BUILD32.md) · [Report an issue](https://github.com/wangyuqin378-cpu/voice-todo/issues)
 
 **License:** source is public; an open-source license has not been specified.
